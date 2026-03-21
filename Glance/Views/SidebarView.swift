@@ -3,6 +3,7 @@ import SwiftUI
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
     @State private var rootNodes: [FileNode] = []
+    @StateObject private var watcher = FileWatcher()
 
     var body: some View {
         Group {
@@ -27,13 +28,30 @@ struct SidebarView: View {
         .onChange(of: appState.rootPath) { _, newPath in
             if let path = newPath {
                 rootNodes = FileService.shared.listDirectory(path: path)
+                watcher.watch(path: path)
             } else {
                 rootNodes = []
+                watcher.stop()
+            }
+        }
+        .onChange(of: watcher.changedPaths) { _, changedPaths in
+            guard let rootPath = appState.rootPath else { return }
+            for dirPath in changedPaths {
+                if dirPath == rootPath {
+                    // 根目录变更，刷新根节点列表
+                    rootNodes = FileService.shared.listDirectory(path: rootPath)
+                } else {
+                    // 子目录变更，精确刷新对应节点
+                    for node in rootNodes {
+                        node.refreshNode(forPath: dirPath)
+                    }
+                }
             }
         }
         .onAppear {
             if let path = appState.rootPath {
                 rootNodes = FileService.shared.listDirectory(path: path)
+                watcher.watch(path: path)
             }
         }
     }

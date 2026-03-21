@@ -3,36 +3,23 @@ import Foundation
 class FileService {
     static let shared = FileService()
 
-    private let ignoredNames: Set<String> = [
-        ".git", "node_modules", "__pycache__", ".DS_Store",
-        "venv", ".venv", ".idea", ".vscode"
-    ]
-
-    private let ignoredExtensions: Set<String> = ["pyc"]
+    private let fdPath = "/opt/homebrew/bin/fd"
 
     private init() {}
 
-    /// 列出目录内容，目录优先，过滤忽略项
+    /// 列出目录内容，目录优先，通过 fd 自动遵守 .gitignore
     func listDirectory(path: String) -> [FileNode] {
-        let fm = FileManager.default
-        guard let items = try? fm.contentsOfDirectory(atPath: path) else {
-            return []
-        }
+        let items = runFd(in: path)
 
         var dirs: [FileNode] = []
         var files: [FileNode] = []
 
-        for item in items.sorted() {
-            // 过滤
-            if ignoredNames.contains(item) { continue }
-            let ext = (item as NSString).pathExtension.lowercased()
-            if ignoredExtensions.contains(ext) { continue }
-
-            let fullPath = (path as NSString).appendingPathComponent(item)
+        for fullPath in items {
+            let name = (fullPath as NSString).lastPathComponent
             var isDir: ObjCBool = false
-            fm.fileExists(atPath: fullPath, isDirectory: &isDir)
+            FileManager.default.fileExists(atPath: fullPath, isDirectory: &isDir)
 
-            let node = FileNode(name: item, path: fullPath, isDirectory: isDir.boolValue)
+            let node = FileNode(name: name, path: fullPath, isDirectory: isDir.boolValue)
             if isDir.boolValue {
                 dirs.append(node)
             } else {
@@ -41,6 +28,42 @@ class FileService {
         }
 
         return dirs + files
+    }
+
+    /// 用 fd --max-depth 1 列出目录直接子项，自动遵守 .gitignore
+    private func runFd(in directory: String) -> [String] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: fdPath)
+        process.arguments = [
+            "--max-depth", "1",
+            "--hidden",
+            "--exclude", ".git",
+            "--exclude", ".DS_Store",
+            ".", directory
+        ]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+
+            return output
+                .split(separator: "\n")
+                .map { String($0) }
+                .sorted { a, b in
+                    (a as NSString).lastPathComponent.localizedStandardCompare(
+                        (b as NSString).lastPathComponent
+                    ) == .orderedAscending
+                }
+        } catch {
+            return []
+        }
     }
 
     /// 读取文件内容

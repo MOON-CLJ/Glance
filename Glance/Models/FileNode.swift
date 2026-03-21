@@ -21,11 +21,33 @@ class FileNode: Identifiable, ObservableObject {
         children = FileService.shared.listDirectory(path: path)
     }
 
+    /// 重新加载子节点（已加载过的目录才刷新）
+    func reloadChildren() {
+        guard isDirectory, isLoaded else { return }
+        children = FileService.shared.listDirectory(path: path)
+    }
+
     func toggleExpanded() {
         if !isLoaded {
             loadChildren()
         }
         isExpanded.toggle()
+    }
+
+    /// 在树中查找路径匹配的节点并刷新其 children
+    func refreshNode(forPath targetPath: String) {
+        if self.path == targetPath {
+            reloadChildren()
+            return
+        }
+        // 只在已加载的子目录中递归查找
+        guard let children = children else { return }
+        for child in children where child.isDirectory {
+            if targetPath.hasPrefix(child.path + "/") || targetPath == child.path {
+                child.refreshNode(forPath: targetPath)
+                return
+            }
+        }
     }
 }
 
