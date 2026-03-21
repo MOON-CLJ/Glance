@@ -12,7 +12,6 @@ struct GlanceApp: App {
         }
         .windowStyle(.titleBar)
         .commands {
-            // Cmd+Shift+O: 文件搜索
             CommandGroup(after: .textEditing) {
                 Button("Go to File...") {
                     appState.showFileSearch = true
@@ -25,10 +24,10 @@ struct GlanceApp: App {
                 .keyboardShortcut("f", modifiers: [.command, .shift])
             }
 
-            // Cmd+O: 打开目录
+            // Cmd+O: 添加目录
             CommandGroup(replacing: .newItem) {
-                Button("Open Folder...") {
-                    appState.openFolder()
+                Button("Add Folder...") {
+                    appState.addFolder()
                 }
                 .keyboardShortcut("o", modifiers: .command)
             }

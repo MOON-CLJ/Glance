@@ -72,7 +72,7 @@ struct GrepSearchView: View {
 
     private func performSearch(query: String) {
         searchTask?.cancel()
-        guard let root = appState.rootPath, !query.isEmpty else {
+        guard let root = appState.activeRootPath, !query.isEmpty else {
             results = []
             return
         }
@@ -94,7 +94,7 @@ struct GrepSearchView: View {
 
     private func selectCurrent() {
         guard results.indices.contains(selectedIndex) else { return }
-        appState.selectedFile = results[selectedIndex].path
+        appState.activeProject?.openFile(path: results[selectedIndex].path)
         appState.showGrepSearch = false
     }
 }

@@ -7,11 +7,8 @@ struct SidebarView: View {
 
     var body: some View {
         Group {
-            if appState.rootPath != nil {
-                List(selection: Binding(
-                    get: { appState.selectedFile },
-                    set: { appState.selectedFile = $0 }
-                )) {
+            if appState.activeProject != nil {
+                List {
                     ForEach(rootNodes) { node in
                         FileTreeRow(node: node)
                     }
@@ -25,23 +22,15 @@ struct SidebarView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onChange(of: appState.rootPath) { _, newPath in
-            if let path = newPath {
-                rootNodes = FileService.shared.listDirectory(path: path)
-                watcher.watch(path: path)
-            } else {
-                rootNodes = []
-                watcher.stop()
-            }
+        .onChange(of: appState.activeProjectIndex) { _, _ in
+            reloadCurrentProject()
         }
         .onChange(of: watcher.changedPaths) { _, changedPaths in
-            guard let rootPath = appState.rootPath else { return }
+            guard let rootPath = appState.activeRootPath else { return }
             for dirPath in changedPaths {
                 if dirPath == rootPath {
-                    // 根目录变更，刷新根节点列表
                     rootNodes = FileService.shared.listDirectory(path: rootPath)
                 } else {
-                    // 子目录变更，精确刷新对应节点
                     for node in rootNodes {
                         node.refreshNode(forPath: dirPath)
                     }
@@ -49,10 +38,17 @@ struct SidebarView: View {
             }
         }
         .onAppear {
-            if let path = appState.rootPath {
-                rootNodes = FileService.shared.listDirectory(path: path)
-                watcher.watch(path: path)
-            }
+            reloadCurrentProject()
+        }
+    }
+
+    private func reloadCurrentProject() {
+        if let path = appState.activeRootPath {
+            rootNodes = FileService.shared.listDirectory(path: path)
+            watcher.watch(path: path)
+        } else {
+            rootNodes = []
+            watcher.stop()
         }
     }
 }
@@ -84,8 +80,10 @@ struct FileTreeRow: View {
             }
         } else {
             Label(node.name, systemImage: iconForFile(node.name))
-                .tag(node.path)
                 .foregroundColor(.primary)
+                .onTapGesture {
+                    appState.activeProject?.openFile(path: node.path)
+                }
         }
     }
 

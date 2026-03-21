@@ -7,10 +7,37 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView()
         } detail: {
-            if let file = appState.selectedFile {
-                FilePreviewView(filePath: file)
-            } else {
+            if appState.projects.isEmpty {
                 WelcomeView()
+            } else {
+                VStack(spacing: 0) {
+                    // 第一层：目录 tab 栏
+                    ProjectTabBar()
+
+                    Divider()
+
+                    // 第二层 + 第三层：文件 tab 栏 + 预览区
+                    if let project = appState.activeProject {
+                        if project.openedFiles.isEmpty {
+                            // 没有打开的文件，显示提示
+                            VStack {
+                                Spacer()
+                                Text("Select a file from the sidebar")
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            FileTabBar(project: project)
+
+                            Divider()
+
+                            if let file = project.activeFile {
+                                FilePreviewView(filePath: file)
+                            }
+                        }
+                    }
+                }
             }
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 280, max: 400)
@@ -21,14 +48,13 @@ struct ContentView: View {
             GrepSearchView()
         }
         .onAppear {
-            if appState.rootPath == nil {
-                // 优先读取命令行参数
+            if appState.projects.isEmpty {
                 let args = ProcessInfo.processInfo.arguments
                 if args.count > 1 {
                     let path = (args.last! as NSString).expandingTildeInPath
                     var isDir: ObjCBool = false
                     if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
-                        appState.rootPath = path
+                        appState.addFolder(path: path)
                     }
                 }
             }
@@ -49,7 +75,7 @@ struct WelcomeView: View {
                 .font(.largeTitle)
                 .fontWeight(.light)
 
-            Text("Cmd+O to open a folder")
+            Text("Cmd+O to add a folder")
                 .foregroundColor(.secondary)
 
             Text("Cmd+Shift+O to search files")
@@ -58,13 +84,11 @@ struct WelcomeView: View {
             Text("Cmd+Shift+F to search content")
                 .foregroundColor(.secondary)
 
-            if appState.rootPath == nil {
-                Button("Open Folder...") {
-                    appState.openFolder()
-                }
-                .buttonStyle(.borderedProminent)
-                .padding(.top, 8)
+            Button("Add Folder...") {
+                appState.addFolder()
             }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
