@@ -82,6 +82,31 @@ class CLIService {
             }
     }
 
+    /// 获取 git 文件状态
+    func gitStatus(rootPath: String) async -> [String: String] {
+        let output = await runCommand(
+            "/usr/bin/git",
+            arguments: ["-C", rootPath, "status", "--porcelain", "-uall"]
+        )
+
+        var result: [String: String] = [:]
+        for line in output.split(separator: "\n") {
+            let str = String(line)
+            guard str.count >= 4 else { continue }
+            let status = String(str.prefix(2))
+            let path = String(str.dropFirst(3))
+            // 处理重命名: "R  old -> new"
+            let filePath: String
+            if status.contains("R"), let arrowRange = path.range(of: " -> ") {
+                filePath = String(path[arrowRange.upperBound...])
+            } else {
+                filePath = path
+            }
+            result[filePath] = status
+        }
+        return result
+    }
+
     private func runCommand(_ path: String, arguments: [String]) async -> String {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {

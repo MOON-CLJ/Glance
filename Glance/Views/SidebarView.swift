@@ -36,6 +36,7 @@ struct SidebarView: View {
                     }
                 }
             }
+            appState.activeProject?.refreshGitStatus()
         }
         .onAppear {
             reloadCurrentProject()
@@ -57,8 +58,34 @@ struct FileTreeRow: View {
     @ObservedObject var node: FileNode
     @EnvironmentObject var appState: AppState
 
+    /// git 状态对应的颜色
+    /// porcelain 格式: XY, X=index状态, Y=工作区状态
+    private var gitColor: Color? {
+        let status: String?
+        if node.isDirectory {
+            status = appState.activeProject?.gitStatus(forDirectory: node.path)
+        } else {
+            status = appState.activeProject?.gitStatus(forPath: node.path)
+        }
+        guard let s = status, s.count == 2 else { return nil }
+        let index = s.first!      // 暂存区状态
+        let workTree = s.last!    // 工作区状态
+
+        // 工作区有未暂存修改 -> 黄色
+        if workTree == "M" { return .yellow }
+        // 工作区有未暂存删除 -> 红色
+        if workTree == "D" { return .red }
+        // untracked -> 灰色
+        if s == "??" { return .gray }
+        // 全部已暂存 (A/M/D/R + 空格) -> 绿色
+        if index != " " && index != "?" && workTree == " " { return .green }
+
+        return .yellow
+    }
+
     private var labelColor: Color {
-        node.isHidden ? .secondary : (node.isDirectory ? .accentColor : .primary)
+        if let gc = gitColor { return gc }
+        return node.isHidden ? .secondary : (node.isDirectory ? .accentColor : .primary)
     }
 
     var body: some View {
