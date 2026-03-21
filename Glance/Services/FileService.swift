@@ -71,6 +71,22 @@ class FileService {
         try? String(contentsOfFile: path, encoding: .utf8)
     }
 
+    /// 根据文件名返回 SF Symbol 图标名
+    func iconForFile(_ name: String) -> String {
+        let ext = (name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "swift": return "swift"
+        case "py": return "doc.text"
+        case "go": return "doc.text"
+        case "js", "ts", "jsx", "tsx": return "doc.text"
+        case "json", "yaml", "yml", "toml": return "doc.text"
+        case "md": return "doc.richtext"
+        case "sh", "bash", "zsh": return "terminal"
+        case "png", "jpg", "jpeg", "gif", "svg": return "photo"
+        default: return "doc"
+        }
+    }
+
     /// 检测文件语言（用于语法高亮）
     func detectLanguage(path: String) -> String {
         let ext = (path as NSString).pathExtension.lowercased()

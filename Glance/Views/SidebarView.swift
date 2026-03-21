@@ -79,25 +79,11 @@ struct FileTreeRow: View {
                 }
             }
         } else {
-            Label(node.name, systemImage: iconForFile(node.name))
+            Label(node.name, systemImage: FileService.shared.iconForFile(node.name))
                 .foregroundColor(.primary)
                 .onTapGesture {
                     appState.activeProject?.openFile(path: node.path)
                 }
-        }
-    }
-
-    private func iconForFile(_ name: String) -> String {
-        let ext = (name as NSString).pathExtension.lowercased()
-        switch ext {
-        case "swift": return "swift"
-        case "py": return "doc.text"
-        case "js", "ts", "jsx", "tsx": return "doc.text"
-        case "json", "yaml", "yml", "toml": return "doc.text"
-        case "md": return "doc.richtext"
-        case "sh", "bash", "zsh": return "terminal"
-        case "png", "jpg", "jpeg", "gif", "svg": return "photo"
-        default: return "doc"
         }
     }
 }

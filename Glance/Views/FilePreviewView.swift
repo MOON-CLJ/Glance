@@ -10,7 +10,7 @@ struct FilePreviewView: View {
         VStack(spacing: 0) {
             // 顶部文件路径栏
             HStack {
-                Image(systemName: iconForFile(filePath))
+                Image(systemName: FileService.shared.iconForFile(filePath))
                     .foregroundColor(.secondary)
                 Text(filePath)
                     .font(.system(.body, design: .monospaced))
@@ -45,15 +45,6 @@ struct FilePreviewView: View {
         }
     }
 
-    private func iconForFile(_ path: String) -> String {
-        let ext = (path as NSString).pathExtension.lowercased()
-        switch ext {
-        case "swift": return "swift"
-        case "py": return "doc.text"
-        case "md": return "doc.richtext"
-        default: return "doc"
-        }
-    }
 }
 
 /// WKWebView 封装，用 highlight.js 渲染代码
