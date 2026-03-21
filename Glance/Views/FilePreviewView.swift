@@ -70,13 +70,18 @@ struct CodeWebView: NSViewRepresentable {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
 
+        let lines = escaped.split(separator: "\n", omittingEmptySubsequences: false)
+        let lineCount = lines.count
+        let lineNumbers = (1...max(lineCount, 1)).map { "\($0)" }.joined(separator: "\n")
+        let codeContent = lines.joined(separator: "\n")
+
         let html = """
         <!DOCTYPE html>
         <html>
         <head>
         <meta charset="UTF-8">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js" integrity="sha384-RH2xi4eIQ/gjtbs9fUXM68sLSi99C7ZWBRX1vDrVv6GQXRibxXLbwO2NGZB74MbU" crossorigin="anonymous"></script>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
@@ -86,42 +91,48 @@ struct CodeWebView: NSViewRepresentable {
                 background: #1e1e1e;
                 color: #d4d4d4;
             }
-            pre {
-                padding: 12px;
+            .code-container {
+                display: flex;
                 overflow-x: auto;
             }
-            code { font-family: inherit; }
             .line-numbers {
-                counter-reset: line;
-            }
-            .line-numbers .line::before {
-                counter-increment: line;
-                content: counter(line);
-                display: inline-block;
-                width: 3em;
-                margin-right: 1em;
+                flex-shrink: 0;
+                padding: 12px 0;
                 text-align: right;
                 color: #555;
                 user-select: none;
+                border-right: 1px solid #333;
+                padding-right: 12px;
+                margin-right: 12px;
+                white-space: pre;
             }
+            .code-content {
+                flex: 1;
+                min-width: 0;
+            }
+            pre {
+                padding: 12px 0;
+                margin: 0;
+                overflow-x: auto;
+            }
+            code {
+                font-family: inherit;
+            }
+            .hljs { background: transparent !important; padding: 0 !important; }
         </style>
         </head>
         <body>
-        <pre><code class="language-\(language) line-numbers">\(addLineSpans(escaped))</code></pre>
-        <script>
-            hljs.highlightAll();
-        </script>
+        <div class="code-container">
+            <div class="line-numbers">\(lineNumbers)</div>
+            <div class="code-content">
+                <pre><code class="language-\(language)">\(codeContent)</code></pre>
+            </div>
+        </div>
+        <script>hljs.highlightAll();</script>
         </body>
         </html>
         """
 
         webView.loadHTMLString(html, baseURL: nil)
-    }
-
-    private func addLineSpans(_ text: String) -> String {
-        text
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { "<span class=\"line\">\($0)</span>" }
-            .joined(separator: "\n")
     }
 }
