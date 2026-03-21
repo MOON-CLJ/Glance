@@ -57,6 +57,10 @@ struct FileTreeRow: View {
     @ObservedObject var node: FileNode
     @EnvironmentObject var appState: AppState
 
+    private var labelColor: Color {
+        node.isHidden ? .secondary : (node.isDirectory ? .accentColor : .primary)
+    }
+
     var body: some View {
         if node.isDirectory {
             DisclosureGroup(
@@ -69,8 +73,15 @@ struct FileTreeRow: View {
                     }
                 },
                 label: {
-                    Label(node.name, systemImage: "folder.fill")
-                        .foregroundColor(.accentColor)
+                    HStack(spacing: 2) {
+                        Label(node.name, systemImage: "folder.fill")
+                            .foregroundColor(labelColor)
+                        if node.isSymlink {
+                            Image(systemName: "arrow.turn.right.up")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
             )
             .onChange(of: node.isExpanded) { _, expanded in
@@ -79,11 +90,18 @@ struct FileTreeRow: View {
                 }
             }
         } else {
-            Label(node.name, systemImage: FileService.shared.iconForFile(node.name))
-                .foregroundColor(.primary)
-                .onTapGesture {
-                    appState.activeProject?.openFile(path: node.path)
+            HStack(spacing: 2) {
+                Label(node.name, systemImage: FileService.shared.iconForFile(node.name))
+                    .foregroundColor(labelColor)
+                if node.isSymlink {
+                    Image(systemName: "arrow.turn.right.up")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
+            }
+            .onTapGesture {
+                appState.activeProject?.openFile(path: node.path)
+            }
         }
     }
 }

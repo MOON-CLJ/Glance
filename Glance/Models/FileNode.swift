@@ -5,15 +5,19 @@ class FileNode: Identifiable, ObservableObject {
     let name: String
     let path: String
     let isDirectory: Bool
+    let isSymlink: Bool
+    let isHidden: Bool
     @Published var children: [FileNode]?
     @Published var isExpanded = false
 
     var isLoaded: Bool { children != nil }
 
-    init(name: String, path: String, isDirectory: Bool) {
+    init(name: String, path: String, isDirectory: Bool, isSymlink: Bool = false, isHidden: Bool = false) {
         self.name = name
         self.path = path
         self.isDirectory = isDirectory
+        self.isSymlink = isSymlink
+        self.isHidden = isHidden
     }
 
     func loadChildren() {

@@ -14,12 +14,27 @@ class FileService {
         var dirs: [FileNode] = []
         var files: [FileNode] = []
 
+        let fm = FileManager.default
+
         for fullPath in items {
             let name = (fullPath as NSString).lastPathComponent
             var isDir: ObjCBool = false
-            FileManager.default.fileExists(atPath: fullPath, isDirectory: &isDir)
+            fm.fileExists(atPath: fullPath, isDirectory: &isDir)
 
-            let node = FileNode(name: name, path: fullPath, isDirectory: isDir.boolValue)
+            // 检测软链接：用 lstat 而非 stat，避免跟随链接
+            let isSymlink: Bool = {
+                var stat = stat()
+                return lstat(fullPath, &stat) == 0 && (stat.st_mode & S_IFMT) == S_IFLNK
+            }()
+            let isHidden = name.hasPrefix(".")
+
+            let node = FileNode(
+                name: name,
+                path: fullPath,
+                isDirectory: isDir.boolValue,
+                isSymlink: isSymlink,
+                isHidden: isHidden
+            )
             if isDir.boolValue {
                 dirs.append(node)
             } else {
@@ -30,13 +45,14 @@ class FileService {
         return dirs + files
     }
 
-    /// 用 fd --max-depth 1 列出目录直接子项，自动遵守 .gitignore
+    /// 用 fd --max-depth 1 列出目录直接子项，遵守 .fdignore 但不遵守 .gitignore
     private func runFd(in directory: String) -> [String] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: fdPath)
         process.arguments = [
             "--max-depth", "1",
             "--hidden",
+            "--no-ignore-vcs",
             "--exclude", ".git",
             "--exclude", ".DS_Store",
             ".", directory

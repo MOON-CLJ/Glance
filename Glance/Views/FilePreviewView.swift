@@ -16,6 +16,7 @@ struct FilePreviewView: View {
                     .font(.system(.body, design: .monospaced))
                     .lineLimit(1)
                     .truncationMode(.head)
+                    .textSelection(.enabled)
                 Spacer()
             }
             .padding(.horizontal, 12)
