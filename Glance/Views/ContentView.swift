@@ -21,11 +21,15 @@ struct ContentView: View {
             GrepSearchView()
         }
         .onAppear {
-            // 如果没有打开目录，默认使用当前工作目录
             if appState.rootPath == nil {
-                let cwd = FileManager.default.currentDirectoryPath
-                if cwd != "/" {
-                    appState.rootPath = cwd
+                // 优先读取命令行参数
+                let args = ProcessInfo.processInfo.arguments
+                if args.count > 1 {
+                    let path = (args.last! as NSString).expandingTildeInPath
+                    var isDir: ObjCBool = false
+                    if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+                        appState.rootPath = path
+                    }
                 }
             }
         }
