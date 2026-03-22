@@ -25,10 +25,11 @@ class FileNode: Identifiable, ObservableObject {
         children = FileService.shared.listDirectory(path: path)
     }
 
-    /// 重新加载子节点（已加载过的目录才刷新）
+    /// 重新加载子节点（已加载过的目录才刷新），保留展开状态
     func reloadChildren() {
         guard isDirectory, isLoaded else { return }
-        children = FileService.shared.listDirectory(path: path)
+        let latest = FileService.shared.listDirectory(path: path)
+        children = Self.merge(existing: children ?? [], with: latest)
     }
 
     func toggleExpanded() {
@@ -51,6 +52,22 @@ class FileNode: Identifiable, ObservableObject {
                 child.refreshNode(forPath: targetPath)
                 return
             }
+        }
+    }
+
+    /// 增量合并：保留已存在节点的展开状态和 children，移除已删除的，插入新增的
+    static func merge(existing: [FileNode], with latest: [FileNode]) -> [FileNode] {
+        let existingMap = Dictionary(existing.map { ($0.path, $0) }, uniquingKeysWith: { _, new in new })
+        return latest.map { newNode in
+            if let old = existingMap[newNode.path] {
+                // 对已展开且已加载的子目录递归 merge
+                if old.isDirectory, old.isLoaded, let oldChildren = old.children {
+                    let latestChildren = FileService.shared.listDirectory(path: old.path)
+                    old.children = merge(existing: oldChildren, with: latestChildren)
+                }
+                return old
+            }
+            return newNode
         }
     }
 }

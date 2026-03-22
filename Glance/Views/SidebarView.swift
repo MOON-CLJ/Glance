@@ -27,12 +27,8 @@ struct SidebarView: View {
         }
         .onChange(of: watcher.changeId) { _, _ in
             guard let rootPath = appState.activeRootPath else { return }
-            rootNodes = FileService.shared.listDirectory(path: rootPath)
-            for dirPath in watcher.changedPaths {
-                for node in rootNodes {
-                    node.refreshNode(forPath: dirPath)
-                }
-            }
+            let latest = FileService.shared.listDirectory(path: rootPath)
+            rootNodes = FileNode.merge(existing: rootNodes, with: latest)
             appState.activeProject?.refreshGitStatus()
             appState.fileChangeCounter += 1
         }
