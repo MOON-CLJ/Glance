@@ -10,6 +10,11 @@ class AppState: ObservableObject {
     @Published var fileChangeCounter: Int = 0
 
     private var projectCancellables: [UUID: AnyCancellable] = [:]
+    private let savedProjectsKey = "openedProjectPaths"
+
+    init() {
+        restoreProjects()
+    }
 
     var activeProject: ProjectState? {
         guard let idx = activeProjectIndex, projects.indices.contains(idx) else {
@@ -56,6 +61,7 @@ class AppState: ObservableObject {
         }
         projects.append(project)
         activeProjectIndex = projects.count - 1
+        saveProjects()
     }
 
     /// 关闭目录
@@ -72,6 +78,26 @@ class AppState: ObservableObject {
                 activeProjectIndex = projects.count - 1
             } else if active > index {
                 activeProjectIndex = active - 1
+            }
+        }
+        saveProjects()
+    }
+
+    // MARK: - 持久化
+
+    private func saveProjects() {
+        let paths = projects.map { $0.path }
+        UserDefaults.standard.set(paths, forKey: savedProjectsKey)
+    }
+
+    private func restoreProjects() {
+        guard let paths = UserDefaults.standard.stringArray(forKey: savedProjectsKey) else { return }
+        let fm = FileManager.default
+        for path in paths {
+            // 只恢复仍然存在的目录
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+                addFolder(path: path)
             }
         }
     }
