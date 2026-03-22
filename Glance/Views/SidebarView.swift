@@ -25,15 +25,12 @@ struct SidebarView: View {
         .onChange(of: appState.activeProjectIndex) { _, _ in
             reloadCurrentProject()
         }
-        .onChange(of: watcher.changedPaths) { _, changedPaths in
+        .onChange(of: watcher.changeId) { _, _ in
             guard let rootPath = appState.activeRootPath else { return }
-            for dirPath in changedPaths {
-                if dirPath == rootPath {
-                    rootNodes = FileService.shared.listDirectory(path: rootPath)
-                } else {
-                    for node in rootNodes {
-                        node.refreshNode(forPath: dirPath)
-                    }
+            rootNodes = FileService.shared.listDirectory(path: rootPath)
+            for dirPath in watcher.changedPaths {
+                for node in rootNodes {
+                    node.refreshNode(forPath: dirPath)
                 }
             }
             appState.activeProject?.refreshGitStatus()
@@ -73,9 +70,7 @@ struct FileTreeRow: View {
         let workTree = s.last!    // 工作区状态
 
         // 工作区有未暂存修改 -> 黄色
-        if workTree == "M" { return .yellow }
-        // 工作区有未暂存删除 -> 红色
-        if workTree == "D" { return .red }
+        if workTree == "M" || workTree == "D" { return .yellow }
         // untracked -> 灰色
         if s == "??" { return .gray }
         // 全部已暂存 (A/M/D/R + 空格) -> 绿色

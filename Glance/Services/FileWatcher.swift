@@ -4,8 +4,10 @@ import Combine
 
 /// 基于 FSEventStream 递归监听整个目录树的变更
 class FileWatcher: ObservableObject {
-    /// 变更的目录路径集合，SidebarView 据此精确刷新对应节点
-    @Published var changedPaths: Set<String> = []
+    /// 自增 ID，确保每次文件变化都触发 SwiftUI onChange
+    @Published var changeId: Int = 0
+    /// 最近一次变更涉及的目录路径
+    var changedPaths: Set<String> = []
 
     private var stream: FSEventStreamRef?
     private var watchingPath: String?
@@ -75,14 +77,18 @@ private func fsEventCallback(
 
     guard let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] else { return }
 
-    // 收集变更文件的父目录路径（去重）
+    // 收集变更文件的父目录路径（去重），过滤 .git 目录
     var parentDirs = Set<String>()
     for path in paths {
+        if path.contains("/.git/") || path.hasSuffix("/.git") { continue }
         let parent = (path as NSString).deletingLastPathComponent
         parentDirs.insert(parent)
     }
 
+    guard !parentDirs.isEmpty else { return }
+
     DispatchQueue.main.async {
         watcher.changedPaths = parentDirs
+        watcher.changeId += 1
     }
 }

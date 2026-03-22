@@ -19,7 +19,7 @@ app: build
 		"$(APP_DIR)/Contents/Info.plist"
 
 run: app
-	open "$(APP_DIR)" --args "$$(pwd)"
+	"$(APP_DIR)/Contents/MacOS/$(APP_NAME)"
 
 clean:
 	swift package clean
