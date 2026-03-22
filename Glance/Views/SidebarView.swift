@@ -37,6 +37,7 @@ struct SidebarView: View {
                 }
             }
             appState.activeProject?.refreshGitStatus()
+            appState.fileChangeCounter += 1
         }
         .onAppear {
             reloadCurrentProject()

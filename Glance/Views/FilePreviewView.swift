@@ -3,6 +3,7 @@ import WebKit
 
 struct FilePreviewView: View {
     let filePath: String
+    @EnvironmentObject var appState: AppState
     @State private var content: String = ""
     @State private var language: String = "plaintext"
 
@@ -35,6 +36,7 @@ struct FilePreviewView: View {
         }
         .onAppear { loadFile() }
         .onChange(of: filePath) { _, _ in loadFile() }
+        .onChange(of: appState.fileChangeCounter) { _, _ in loadFile() }
     }
 
     private func loadFile() {
