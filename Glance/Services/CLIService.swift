@@ -8,24 +8,25 @@ class CLIService {
 
     private init() {}
 
-    /// 使用 fd 搜索文件名
+    /// 使用 fd 搜索文件名（包含 / 时按路径匹配）
     func searchFiles(query: String, in directory: String) async -> [FileSearchResult] {
         guard !query.isEmpty else { return [] }
 
-        let output = await runCommand(
-            fdPath,
-            arguments: [
-                "--type", "f",
-                "--hidden",
-                "--follow",
-                "--exclude", ".git",
-                "--exclude", "node_modules",
-                "--exclude", "__pycache__",
-                "--exclude", "*.pyc",
-                query,
-                directory
-            ]
-        )
+        var args = [
+            "--type", "f",
+            "--hidden",
+            "--follow",
+            "--exclude", ".git",
+            "--exclude", "node_modules",
+            "--exclude", "__pycache__",
+            "--exclude", "*.pyc",
+        ]
+        if query.contains("/") {
+            args.append("--full-path")
+        }
+        args.append(contentsOf: [query, directory])
+
+        let output = await runCommand(fdPath, arguments: args)
 
         return output
             .split(separator: "\n")
