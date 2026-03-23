@@ -19,12 +19,30 @@ struct FilePreviewView: View {
             HStack {
                 Image(systemName: FileService.shared.iconForFile(filePath))
                     .foregroundColor(.secondary)
-                Text(filePath)
+                Text(relativePath)
                     .font(.system(.body, design: .monospaced))
                     .lineLimit(1)
                     .truncationMode(.head)
                     .textSelection(.enabled)
                 Spacer()
+                Button(action: copyRelativePath) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+                .help("Copy relative path")
+                Button(action: copyAbsolutePath) {
+                    Image(systemName: "doc.on.doc.fill")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+                .help("Copy absolute path")
+                Button(action: revealInFinder) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+                .help("Reveal in Finder")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -97,6 +115,27 @@ struct FilePreviewView: View {
             if showSearch { closeSearch(); return .handled }
             return .ignored
         }
+    }
+
+    private var relativePath: String {
+        if let root = appState.activeRootPath, filePath.hasPrefix(root + "/") {
+            return String(filePath.dropFirst(root.count + 1))
+        }
+        return filePath
+    }
+
+    private func copyRelativePath() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(relativePath, forType: .string)
+    }
+
+    private func copyAbsolutePath() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(filePath, forType: .string)
+    }
+
+    private func revealInFinder() {
+        NSWorkspace.shared.selectFile(filePath, inFileViewerRootedAtPath: "")
     }
 
     private func loadFile() {
