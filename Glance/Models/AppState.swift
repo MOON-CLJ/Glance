@@ -9,6 +9,9 @@ class AppState: ObservableObject {
     @Published var showInFileSearch = false
     /// 文件变化计数器，FileWatcher 触发时递增，用于通知预览刷新
     @Published var fileChangeCounter: Int = 0
+    /// 打开文件后需要跳转的行号和高亮文本
+    @Published var pendingScrollToLine: Int? = nil
+    @Published var pendingHighlightText: String? = nil
 
     private var projectCancellables: [UUID: AnyCancellable] = [:]
     private let savedProjectsKey = "openedProjectPaths"

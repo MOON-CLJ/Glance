@@ -142,7 +142,10 @@ struct GrepSearchView: View {
 
     private func selectCurrent() {
         guard results.indices.contains(selectedIndex) else { return }
-        appState.activeProject?.openFile(path: results[selectedIndex].path)
+        let result = results[selectedIndex]
+        appState.pendingScrollToLine = result.lineNumber
+        appState.pendingHighlightText = query
+        appState.activeProject?.openFile(path: result.path)
         appState.showGrepSearch = false
     }
 }

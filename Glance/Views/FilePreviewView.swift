@@ -6,6 +6,8 @@ struct FilePreviewView: View {
     @EnvironmentObject var appState: AppState
     @State private var content: String = ""
     @State private var language: String = "plaintext"
+    @State private var initialScrollLine: Int? = nil
+    @State private var initialHighlightText: String? = nil
     @State private var showSearch = false
     @State private var searchQuery = ""
     @State private var matchInfo = ""
@@ -69,7 +71,13 @@ struct FilePreviewView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                CodeWebView(content: content, language: language, webViewStore: webViewStore)
+                CodeWebView(
+                    content: content,
+                    language: language,
+                    webViewStore: webViewStore,
+                    scrollToLine: initialScrollLine,
+                    highlightText: initialHighlightText
+                )
             }
         }
         .onAppear { loadFile() }
@@ -93,6 +101,11 @@ struct FilePreviewView: View {
 
     private func loadFile() {
         language = FileService.shared.detectLanguage(path: filePath)
+        // 消费 pending 跳转信息
+        initialScrollLine = appState.pendingScrollToLine
+        initialHighlightText = appState.pendingHighlightText
+        appState.pendingScrollToLine = nil
+        appState.pendingHighlightText = nil
         if let text = FileService.shared.readFile(path: filePath) {
             content = text
         } else {
