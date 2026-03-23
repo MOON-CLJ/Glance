@@ -6,6 +6,10 @@ struct GrepSearchView: View {
     @State private var results: [GrepSearchResult] = []
     @State private var selectedIndex = 0
     @State private var searchTask: Task<Void, Never>?
+    @State private var previewContent = ""
+    @State private var previewLanguage = "plaintext"
+    @State private var previewLine: Int? = nil
+    @StateObject private var previewWebViewStore = WebViewStore()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,38 +27,65 @@ struct GrepSearchView: View {
 
             Divider()
 
-            // 结果列表
-            if results.isEmpty && !query.isEmpty {
-                Text("No results")
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(selection: Binding(
-                    get: { results.indices.contains(selectedIndex) ? results[selectedIndex].id : nil },
-                    set: { newId in
-                        if let idx = results.firstIndex(where: { $0.id == newId }) {
-                            selectedIndex = idx
+            // 上下分栏：结果列表 + 代码预览
+            VSplitView {
+                // 上半：结果列表
+                Group {
+                    if results.isEmpty && !query.isEmpty {
+                        Text("No results")
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        List(selection: Binding(
+                            get: { results.indices.contains(selectedIndex) ? results[selectedIndex].id : nil },
+                            set: { newId in
+                                if let idx = results.firstIndex(where: { $0.id == newId }) {
+                                    selectedIndex = idx
+                                }
+                            }
+                        )) {
+                            ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
+                                GrepSearchRow(result: result, isSelected: index == selectedIndex)
+                                    .tag(result.id)
+                                    .onTapGesture(count: 2) {
+                                        selectedIndex = index
+                                        selectCurrent()
+                                    }
+                                    .onTapGesture {
+                                        selectedIndex = index
+                                    }
+                            }
                         }
-                    }
-                )) {
-                    ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
-                        GrepSearchRow(result: result, isSelected: index == selectedIndex)
-                            .tag(result.id)
-                            .onTapGesture(count: 2) {
-                                selectedIndex = index
-                                selectCurrent()
-                            }
-                            .onTapGesture {
-                                selectedIndex = index
-                            }
+                        .listStyle(.plain)
                     }
                 }
-                .listStyle(.plain)
+                .frame(minHeight: 150)
+
+                // 下半：代码预览
+                Group {
+                    if previewContent.isEmpty {
+                        Text("Select a result to preview")
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        CodeWebView(
+                            content: previewContent,
+                            language: previewLanguage,
+                            webViewStore: previewWebViewStore,
+                            scrollToLine: previewLine,
+                            highlightText: query
+                        )
+                    }
+                }
+                .frame(minHeight: 150)
             }
         }
-        .frame(width: 800, height: 600)
+        .frame(minWidth: 700, idealWidth: 800, minHeight: 600, idealHeight: 700)
         .onChange(of: query) { _, newQuery in
             performSearch(query: newQuery)
+        }
+        .onChange(of: selectedIndex) { _, _ in
+            loadPreview()
         }
         .onKeyPress(.upArrow) {
             if selectedIndex > 0 { selectedIndex -= 1 }
@@ -74,6 +105,7 @@ struct GrepSearchView: View {
         searchTask?.cancel()
         guard let root = appState.activeRootPath, !query.isEmpty else {
             results = []
+            previewContent = ""
             return
         }
 
@@ -87,8 +119,24 @@ struct GrepSearchView: View {
                 await MainActor.run {
                     results = Array(searchResults.prefix(100))
                     selectedIndex = 0
+                    loadPreview()
                 }
             }
+        }
+    }
+
+    private func loadPreview() {
+        guard results.indices.contains(selectedIndex) else {
+            previewContent = ""
+            return
+        }
+        let result = results[selectedIndex]
+        previewLanguage = FileService.shared.detectLanguage(path: result.path)
+        previewLine = result.lineNumber
+        if let text = FileService.shared.readFile(path: result.path) {
+            previewContent = text
+        } else {
+            previewContent = "// Unable to read file"
         }
     }
 

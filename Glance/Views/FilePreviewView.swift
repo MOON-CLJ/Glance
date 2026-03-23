@@ -144,18 +144,53 @@ struct CodeWebView: NSViewRepresentable {
     let content: String
     let language: String
     let webViewStore: WebViewStore
+    var scrollToLine: Int? = nil
+    var highlightText: String? = nil
+
+    class Coordinator {
+        var lastContent: String = ""
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> WKWebView {
         let webView = WKWebView()
         webView.setValue(false, forKey: "drawsBackground")
         webViewStore.webView = webView
+        context.coordinator.lastContent = content
         loadHTML(into: webView)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         webViewStore.webView = webView
-        loadHTML(into: webView)
+        if context.coordinator.lastContent == content {
+            // 同一个文件，只跳转行，不重新加载
+            if let line = scrollToLine {
+                let js: String
+                if let text = highlightText {
+                    let escaped = text.replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "'", with: "\\'")
+                    js = "document.querySelectorAll('.highlight-match').forEach(function(m){var p=m.parentNode;p.replaceChild(document.createTextNode(m.textContent),m);p.normalize();});highlightAtLine(\(line),'\(escaped)');"
+                } else {
+                    js = "scrollToLine(\(line));"
+                }
+                webView.evaluateJavaScript(js)
+            }
+        } else {
+            context.coordinator.lastContent = content
+            loadHTML(into: webView)
+        }
+    }
+
+    private func buildInitCall() -> String {
+        guard let line = scrollToLine else { return "" }
+        if let text = highlightText {
+            let escaped = text.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "\\'")
+            return "setTimeout(function() { highlightAtLine(\(line), '\(escaped)'); }, 50);"
+        }
+        return "setTimeout(function() { scrollToLine(\(line)); }, 50);"
     }
 
     private func loadHTML(into webView: WKWebView) {
@@ -214,6 +249,7 @@ struct CodeWebView: NSViewRepresentable {
                 font-family: inherit;
             }
             .hljs { background: transparent !important; padding: 0 !important; }
+            .highlight-match { background: #9e7700; color: inherit; border-radius: 2px; outline: 1px solid #d4a800; }
             .search-match { background: #614d00; color: inherit; border-radius: 2px; }
             .search-current { background: #9e7700; outline: 1px solid #d4a800; }
         </style>
@@ -228,6 +264,64 @@ struct CodeWebView: NSViewRepresentable {
         <script>
         hljs.highlightAll();
 
+        \(buildInitCall())
+
+        function scrollToLine(n) {
+            var lineHeight = parseFloat(getComputedStyle(document.body).lineHeight);
+            var padding = 12;
+            var targetY = padding + (n - 1) * lineHeight;
+            window.scrollTo(0, targetY - window.innerHeight / 2);
+        }
+
+        function highlightAtLine(lineNum, query) {
+            if (!query) { scrollToLine(lineNum); return; }
+            var code = document.querySelector('pre code');
+            var text = code.textContent;
+            var lines = text.split('\\n');
+            if (lineNum < 1 || lineNum > lines.length) { scrollToLine(lineNum); return; }
+
+            // 计算目标文字在整个 textContent 中的偏移
+            var offset = 0;
+            for (var i = 0; i < lineNum - 1; i++) { offset += lines[i].length + 1; }
+            var lineText = lines[lineNum - 1];
+            var lowerLine = lineText.toLowerCase();
+            var lowerQuery = query.toLowerCase();
+            var matchIdx = lowerLine.indexOf(lowerQuery);
+            if (matchIdx === -1) { scrollToLine(lineNum); return; }
+
+            var globalStart = offset + matchIdx;
+            var globalEnd = globalStart + query.length;
+
+            // 在 DOM 的 text nodes 中定位 globalStart..globalEnd
+            var walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+            var pos = 0;
+            var startNode = null, startOff = 0, endNode = null, endOff = 0;
+            while (walker.nextNode()) {
+                var node = walker.currentNode;
+                var len = node.textContent.length;
+                if (!startNode && pos + len > globalStart) {
+                    startNode = node;
+                    startOff = globalStart - pos;
+                }
+                if (pos + len >= globalEnd) {
+                    endNode = node;
+                    endOff = globalEnd - pos;
+                    break;
+                }
+                pos += len;
+            }
+            if (!startNode || !endNode) { scrollToLine(lineNum); return; }
+
+            // 先无动画滚动到目标行
+            scrollToLine(lineNum);
+            // 再用 Range + mark 包裹高亮
+            var range = document.createRange();
+            range.setStart(startNode, startOff);
+            range.setEnd(endNode, endOff);
+            var mark = document.createElement('mark');
+            mark.className = 'highlight-match';
+            range.surroundContents(mark);
+        }
         var _matches = [];
         var _currentIdx = -1;
 

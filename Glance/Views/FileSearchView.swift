@@ -52,7 +52,7 @@ struct FileSearchView: View {
                 .listStyle(.plain)
             }
         }
-        .frame(width: 700, height: 500)
+        .frame(minWidth: 600, idealWidth: 700, minHeight: 400, idealHeight: 500)
         .onChange(of: query) { _, newQuery in
             performSearch(query: newQuery)
         }

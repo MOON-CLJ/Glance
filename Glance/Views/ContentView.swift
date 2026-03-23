@@ -43,9 +43,11 @@ struct ContentView: View {
         .navigationSplitViewColumnWidth(min: 200, ideal: 280, max: 400)
         .sheet(isPresented: $appState.showFileSearch) {
             FileSearchView()
+                .modifier(ResizableSheet())
         }
         .sheet(isPresented: $appState.showGrepSearch) {
             GrepSearchView()
+                .modifier(ResizableSheet())
         }
         .onAppear {
             if appState.projects.isEmpty {
@@ -60,6 +62,27 @@ struct ContentView: View {
             }
         }
     }
+}
+
+/// 让 sheet 的 underlying NSWindow 支持调整大小
+struct ResizableSheet: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background(SheetResizer())
+    }
+}
+
+private struct SheetResizer: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                window.styleMask.insert(.resizable)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 struct WelcomeView: View {
