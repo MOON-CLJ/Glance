@@ -6,8 +6,22 @@ struct SidebarView: View {
     @StateObject private var watcher = FileWatcher()
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
             if appState.activeProject != nil {
+                // 工具栏
+                HStack {
+                    Spacer()
+                    Button(action: locateActiveFile) {
+                        Image(systemName: "scope")
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Locate active file in tree")
+                    .disabled(appState.activeFile == nil)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+
                 List {
                     ForEach(rootNodes) { node in
                         FileTreeRow(node: node)
@@ -44,6 +58,13 @@ struct SidebarView: View {
         } else {
             rootNodes = []
             watcher.stop()
+        }
+    }
+
+    private func locateActiveFile() {
+        guard let filePath = appState.activeFile else { return }
+        for node in rootNodes {
+            if node.expandToPath(filePath) { return }
         }
     }
 }

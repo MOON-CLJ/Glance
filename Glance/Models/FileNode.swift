@@ -55,6 +55,29 @@ class FileNode: Identifiable, ObservableObject {
         }
     }
 
+    /// 递归展开到目标文件路径，返回是否找到
+    @discardableResult
+    func expandToPath(_ targetPath: String) -> Bool {
+        let normalizedPath = path.hasSuffix("/") ? String(path.dropLast()) : path
+        guard isDirectory else { return normalizedPath == targetPath }
+        if !isLoaded { loadChildren() }
+        guard let children = children else { return false }
+        for child in children {
+            let childPath = child.path.hasSuffix("/") ? String(child.path.dropLast()) : child.path
+            if childPath == targetPath {
+                isExpanded = true
+                return true
+            }
+            if child.isDirectory && targetPath.hasPrefix(childPath + "/") {
+                if child.expandToPath(targetPath) {
+                    isExpanded = true
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     /// 增量合并：保留已存在节点的展开状态和 children，移除已删除的，插入新增的
     static func merge(existing: [FileNode], with latest: [FileNode]) -> [FileNode] {
         let existingMap = Dictionary(existing.map { ($0.path, $0) }, uniquingKeysWith: { _, new in new })
