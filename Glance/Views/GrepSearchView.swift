@@ -52,7 +52,7 @@ struct GrepSearchView: View {
                 .listStyle(.plain)
             }
         }
-        .frame(width: 700, height: 500)
+        .frame(width: 800, height: 600)
         .onChange(of: query) { _, newQuery in
             performSearch(query: newQuery)
         }

@@ -13,6 +13,11 @@ struct GlanceApp: App {
         .windowStyle(.titleBar)
         .commands {
             CommandGroup(after: .textEditing) {
+                Button("Find in File") {
+                    appState.showInFileSearch.toggle()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+
                 Button("Go to File...") {
                     appState.showFileSearch = true
                 }

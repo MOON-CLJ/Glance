@@ -6,6 +6,7 @@ class AppState: ObservableObject {
     @Published var activeProjectIndex: Int?
     @Published var showFileSearch = false
     @Published var showGrepSearch = false
+    @Published var showInFileSearch = false
     /// 文件变化计数器，FileWatcher 触发时递增，用于通知预览刷新
     @Published var fileChangeCounter: Int = 0
 
