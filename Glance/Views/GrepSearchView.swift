@@ -85,7 +85,7 @@ struct GrepSearchView: View {
             performSearch(query: newQuery)
         }
         .onChange(of: selectedIndex) { _, _ in
-            loadPreview()
+            DispatchQueue.main.async { loadPreview() }
         }
         .onKeyPress(.upArrow) {
             if selectedIndex > 0 { selectedIndex -= 1 }
