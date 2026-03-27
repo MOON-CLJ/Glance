@@ -127,12 +127,16 @@ class CLIService {
         return result
     }
 
-    private func runCommand(_ path: String, arguments: [String]) async -> String {
+    func runCommand(_ path: String, arguments: [String], cwd: String? = nil) async -> String {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: path)
                 process.arguments = arguments
+                
+                if let cwd = cwd {
+                    process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+                }
 
                 let pipe = Pipe()
                 process.standardOutput = pipe
