@@ -119,11 +119,11 @@ struct ZellijSessionView: View {
                 .foregroundColor(.secondary)
                 .textSelection(.enabled)
 
-            Button(action: { attachCurrentProject() }) {
-                Label("创建/附加 Session", systemImage: "terminal")
+            Button(action: { copyCreateOrAttachCommand() }) {
+                Label(copiedSessionName == currentProjectName ? "已复制!" : "复制New/Attach Session命令", systemImage: "doc.on.doc")
                     .font(.system(size: 12))
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -287,44 +287,30 @@ struct ZellijSessionView: View {
         updateGroupedSessions()
     }
 
-    private func attachCurrentProject() {
-        guard let project = appState.activeProject else { return }
-        let sessionName = ZellijService.shared.sessionName(for: project.path)
-
-        Task {
-            do {
-                errorMessage = nil
-                try await ZellijService.shared.createOrAttach(
-                    sessionName: sessionName,
-                    projectPath: project.path
-                )
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
+    private func setCopiedSession(_ name: String) {
+        copiedSessionName = name
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if copiedSessionName == name {
+                copiedSessionName = nil
             }
         }
+    }
+
+    private func copyCreateOrAttachCommand() {
+        guard let project = appState.activeProject else { return }
+        let sessionName = ZellijService.shared.sessionName(for: project.path)
+        ZellijService.shared.copyCreateOrAttachCommand(for: sessionName, path: project.path)
+        setCopiedSession(sessionName)
     }
 
     private func copySwitchCommand(_ sessionName: String) {
         ZellijService.shared.copySwitchCommand(for: sessionName)
-        copiedSessionName = sessionName
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if copiedSessionName == sessionName {
-                copiedSessionName = nil
-            }
-        }
+        setCopiedSession(sessionName)
     }
 
     private func copyAttachCommand(_ sessionName: String) {
         ZellijService.shared.copyAttachCommand(for: sessionName)
-        copiedSessionName = sessionName
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if copiedSessionName == sessionName {
-                copiedSessionName = nil
-            }
-        }
+        setCopiedSession(sessionName)
     }
 
     private func deleteSession(_ session: ZellijSession) async {
