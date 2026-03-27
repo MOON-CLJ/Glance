@@ -115,15 +115,20 @@ private struct WrappingHStackLayout: Layout {
     let alignment: WrappingHStackAlignment
     let spacing: WrappingHStackSpacing
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout FlowResult?) -> CGSize {
+    func makeCache(subviews: Subviews) -> Any? {
+        nil
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Any?) -> CGSize {
         let result = FlowResult(in: proposal.width ?? 0, subviews: subviews, alignment: alignment, spacing: spacing)
         cache = result
         return result.size
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout FlowResult?) {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Any?) {
+        guard bounds.width > 0, !subviews.isEmpty else { return }
         let result: FlowResult
-        if let cached = cache, cached.maxWidth == bounds.width {
+        if let cached = cache as? FlowResult, cached.maxWidth == bounds.width {
             result = cached
         } else {
             result = FlowResult(in: bounds.width, subviews: subviews, alignment: alignment, spacing: spacing)
