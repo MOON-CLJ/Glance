@@ -43,7 +43,7 @@ struct ZellijSessionView: View {
         var grouped: [UUID: (ProjectState, [ZellijSession])] = [:]
         for session in allSessions {
             let matched = nameToProject.first { session.name.hasPrefix($0.key) }
-            if let (baseName, project) = matched {
+            if let (_, project) = matched {
                 grouped[project.id, default: (project, [])].1.append(session)
             }
         }

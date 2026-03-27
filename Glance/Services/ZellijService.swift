@@ -1,11 +1,13 @@
 import Foundation
 import AppKit
+import os
 
 class ZellijService {
     static let shared = ZellijService()
 
     private let zellijPath: String
     private var sessionNameCache: [String: String] = [:]
+    private let cacheLock = OSAllocatedUnfairLock(initialState: ())
 
     private init() {
         zellijPath = Self.resolveZellijPath()
@@ -33,9 +35,8 @@ class ZellijService {
     // MARK: - Session Name
 
     func sessionName(for path: String) async -> String {
-        if let cached = sessionNameCache[path] {
-            return cached
-        }
+        let cached: String? = cacheLock.withLock { sessionNameCache[path] }
+        if let cached { return cached }
 
         let name: String
         if let gitInfo = await parseGitRepo(path) {
@@ -48,7 +49,7 @@ class ZellijService {
             name = path.replacingOccurrences(of: "/", with: "·")
         }
 
-        sessionNameCache[path] = name
+        cacheLock.withLock { sessionNameCache[path] = name }
         return name
     }
 
