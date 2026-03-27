@@ -78,6 +78,15 @@ enum WrappingHStackSpacing {
     case horizontal(CGFloat)
     case vertical(CGFloat)
     case both(horizontal: CGFloat, vertical: CGFloat)
+
+    var resolved: (horizontal: CGFloat, vertical: CGFloat) {
+        switch self {
+        case .constant(let value): return (value, value)
+        case .horizontal(let value): return (value, 4)
+        case .vertical(let value): return (4, value)
+        case .both(let h, let v): return (h, v)
+        }
+    }
 }
 
 struct WrappingHStack<Content: View>: View {
@@ -106,14 +115,20 @@ private struct WrappingHStackLayout: Layout {
     let alignment: WrappingHStackAlignment
     let spacing: WrappingHStackSpacing
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout FlowResult?) -> CGSize {
         let result = FlowResult(in: proposal.width ?? 0, subviews: subviews, alignment: alignment, spacing: spacing)
+        cache = result
         return result.size
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = FlowResult(in: bounds.width, subviews: subviews, alignment: alignment, spacing: spacing)
-        
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout FlowResult?) {
+        let result: FlowResult
+        if let cached = cache, cached.maxWidth == bounds.width {
+            result = cached
+        } else {
+            result = FlowResult(in: bounds.width, subviews: subviews, alignment: alignment, spacing: spacing)
+        }
+
         for (index, subview) in subviews.enumerated() {
             let point = result.positions[index]
             subview.place(at: CGPoint(x: point.x + bounds.minX, y: point.y + bounds.minY), proposal: .unspecified)
@@ -123,8 +138,13 @@ private struct WrappingHStackLayout: Layout {
     private struct FlowResult {
         var size: CGSize = .zero
         var positions: [CGPoint] = []
+        var maxWidth: CGFloat = 0
 
         init(in maxWidth: CGFloat, subviews: Subviews, alignment: WrappingHStackAlignment, spacing: WrappingHStackSpacing) {
+            guard maxWidth > 0 else {
+                self.size = .zero
+                return
+            }
             var x: CGFloat = 0
             var y: CGFloat = 0
             var lineHeight: CGFloat = 0
@@ -132,7 +152,7 @@ private struct WrappingHStackLayout: Layout {
             var currentLineStart = 0
             var currentLineWidth: CGFloat = 0
             
-            let (hSpacing, vSpacing) = extractSpacing(spacing)
+            let (hSpacing, vSpacing) = spacing.resolved
 
             for (index, subview) in subviews.enumerated() {
                 let size = subview.sizeThatFits(.unspecified)
@@ -148,11 +168,12 @@ private struct WrappingHStackLayout: Layout {
 
                 if x > 0 {
                     x += hSpacing
+                    currentLineWidth += hSpacing
                 }
 
                 positions.append(CGPoint(x: x, y: y))
                 x += size.width
-                currentLineWidth += (positions.count > currentLineStart + 1 ? hSpacing : 0) + size.width
+                currentLineWidth += size.width
                 lineHeight = max(lineHeight, size.height)
             }
             
@@ -161,6 +182,7 @@ private struct WrappingHStackLayout: Layout {
             }
 
             self.size = CGSize(width: maxWidth, height: y + lineHeight)
+            self.maxWidth = maxWidth
             
             // Apply alignment
             for line in lineWidths {
@@ -180,19 +202,6 @@ private struct WrappingHStackLayout: Layout {
                     for i in line.startIndex...line.endIndex {
                         positions[i].x += offset
                     }
-                }
-            }
-            
-            func extractSpacing(_ spacing: WrappingHStackSpacing) -> (horizontal: CGFloat, vertical: CGFloat) {
-                switch spacing {
-                case .constant(let value):
-                    return (value, value)
-                case .horizontal(let value):
-                    return (value, 4)
-                case .vertical(let value):
-                    return (4, value)
-                case .both(let h, let v):
-                    return (h, v)
                 }
             }
         }
