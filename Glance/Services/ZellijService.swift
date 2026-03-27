@@ -195,6 +195,16 @@ class ZellijService {
         NSPasteboard.general.setString(command, forType: .string)
     }
 
+    func attachCommand(for name: String) -> String {
+        "zellij attach \"\(name)\""
+    }
+
+    func copyAttachCommand(for name: String) {
+        let command = attachCommand(for: name)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+    }
+
     private func runZellij(arguments: [String], workingDirectory: String? = nil) async throws {
         let output = await CLIService.shared.runCommand(
             zellijPath,

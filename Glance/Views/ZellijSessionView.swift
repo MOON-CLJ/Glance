@@ -110,7 +110,13 @@ struct ZellijSessionView: View {
                 .buttonStyle(.borderedProminent)
 
                 Button(action: { copySwitchCommand(currentProjectName) }) {
-                    Label(copiedSessionName == currentProjectName ? "已复制!" : "复制切换命令", systemImage: "doc.on.doc")
+                    Label(copiedSessionName == currentProjectName ? "已复制!" : "复制Switch Session命令", systemImage: "doc.on.doc")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: { copyAttachCommand(currentProjectName) }) {
+                    Label("复制Attach Session命令", systemImage: "doc.on.doc")
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.bordered)
@@ -226,7 +232,14 @@ struct ZellijSessionView: View {
                     .font(.system(size: 10))
             }
             .buttonStyle(.borderless)
-            .help("复制切换命令")
+            .help("复制Switch Session命令")
+
+            Button(action: { copyAttachCommand(session.name) }) {
+                Image(systemName: "link")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.borderless)
+            .help("复制Attach Session命令")
 
             Button(action: { killSession(session.name) }) {
                 Image(systemName: "xmark")
@@ -275,6 +288,17 @@ struct ZellijSessionView: View {
 
     private func copySwitchCommand(_ sessionName: String) {
         ZellijService.shared.copySwitchCommand(for: sessionName)
+        copiedSessionName = sessionName
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if copiedSessionName == sessionName {
+                copiedSessionName = nil
+            }
+        }
+    }
+
+    private func copyAttachCommand(_ sessionName: String) {
+        ZellijService.shared.copyAttachCommand(for: sessionName)
         copiedSessionName = sessionName
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
