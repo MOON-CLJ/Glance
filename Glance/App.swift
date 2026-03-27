@@ -27,6 +27,11 @@ struct GlanceApp: App {
                     appState.showGrepSearch = true
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
+
+                Button("Zellij Sessions...") {
+                    appState.showZellijSession = true
+                }
+                .keyboardShortcut("j", modifiers: [.command, .shift])
             }
 
             // Cmd+O: 添加目录
