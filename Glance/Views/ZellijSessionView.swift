@@ -5,46 +5,62 @@ struct ZellijSessionView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var allSessions: [ZellijSession] = []
-    @State private var groupedSessions: [(project: ProjectState, sessions: [ZellijSession])] = []
+    @State private var groupedSessions: [SessionGroup] = []
     @State private var otherSessions: [ZellijSession] = []
     @State private var currentProjectName: String = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var copiedSessionName: String?
+    @State private var copiedSession: (name: String, label: String)?
     @State private var showDeleteConfirmation = false
     @State private var sessionToDelete: ZellijSession?
 
     // MARK: - Group Sessions
 
     /// 更新分组数据（避免在渲染过程中计算）
-    private func updateGroupedSessions() {
+    private func updateGroupedSessions() async {
         let currentProject = appState.activeProject
-        let otherProjects = appState.projects.filter { $0.id != currentProject?.id }
+        let allProjects = appState.projects
 
-        var newGrouped: [(ProjectState, [ZellijSession])] = []
+        let pathToProject: [(path: String, project: ProjectState)] = allProjects.map { ($0.path, $0) }
+        let names = await withTaskGroup(of: (String, String).self) { group in
+            for (path, _) in pathToProject {
+                group.addTask { (path, await ZellijService.shared.sessionName(for: path)) }
+            }
+            var result: [String: String] = [:]
+            for await (path, name) in group {
+                result[path] = name
+            }
+            return result
+        }
 
-        // 当前项目在前
-        if let current = currentProject {
-            let baseName = ZellijService.shared.sessionName(for: current.path)
-            let sessions = allSessions.filter { $0.name.hasPrefix(baseName) }
-            if !sessions.isEmpty {
-                newGrouped.append((current, sessions))
+        var nameToProject: [String: ProjectState] = [:]
+        for (path, project) in pathToProject {
+            if let name = names[path] {
+                nameToProject[name] = project
             }
         }
 
-        // 其他项目在后
-        for project in otherProjects {
-            let baseName = ZellijService.shared.sessionName(for: project.path)
-            let sessions = allSessions.filter { $0.name.hasPrefix(baseName) }
-            if !sessions.isEmpty {
-                newGrouped.append((project, sessions))
+        var grouped: [UUID: (ProjectState, [ZellijSession])] = [:]
+        for session in allSessions {
+            let matched = nameToProject.first { session.name.hasPrefix($0.key) }
+            if let (baseName, project) = matched {
+                grouped[project.id, default: (project, [])].1.append(session)
+            }
+        }
+
+        var newGrouped: [SessionGroup] = []
+        if let current = currentProject, let (project, sessions) = grouped[current.id] {
+            newGrouped.append(SessionGroup(project: project, sessions: sessions))
+        }
+        for project in allProjects where project.id != currentProject?.id {
+            if let (project, sessions) = grouped[project.id] {
+                newGrouped.append(SessionGroup(project: project, sessions: sessions))
             }
         }
 
         groupedSessions = newGrouped
 
-        // 计算其他 sessions
-        let knownSessionNames = Set(newGrouped.flatMap { $0.1.map { $0.name } })
+        let knownSessionNames = Set(newGrouped.flatMap { $0.sessions.map { $0.name } })
         otherSessions = allSessions.filter { !knownSessionNames.contains($0.name) }
     }
 
@@ -66,9 +82,9 @@ struct ZellijSessionView: View {
 
             footerSection()
         }
-        .frame(width: 480, height: 500)
+        .frame(minWidth: 480, idealWidth: 520, maxWidth: 700, minHeight: 400, maxHeight: 700)
         .onAppear {
-            loadSessionName()
+            Task { await loadSessionName() }
             Task { await refreshSessions() }
         }
         .onKeyPress(.escape) {
@@ -119,8 +135,8 @@ struct ZellijSessionView: View {
                 .foregroundColor(.secondary)
                 .textSelection(.enabled)
 
-            Button(action: { copyCreateOrAttachCommand() }) {
-                Label(copiedSessionName == currentProjectName ? "已复制!" : "复制New/Attach Session命令", systemImage: "doc.on.doc")
+            Button(action: { Task { await copyCreateOrAttachCommand() } }) {
+                Label(copiedSession?.name == currentProjectName ? "已复制 \(copiedSession!.label)" : "复制New/Attach Session命令", systemImage: "doc.on.doc")
                     .font(.system(size: 12))
             }
             .buttonStyle(.bordered)
@@ -144,7 +160,7 @@ struct ZellijSessionView: View {
             } else {
                 List {
                     // 已知项目的 sessions
-                    ForEach(groupedSessions, id: \.project.id) { group in
+                    ForEach(groupedSessions) { group in
                         Section(header: projectHeader(group.project)) {
                             ForEach(group.sessions) { session in
                                 sessionRow(session)
@@ -237,8 +253,8 @@ struct ZellijSessionView: View {
 
             Spacer()
 
-            if copiedSessionName == session.name {
-                Text("已复制")
+            if copiedSession?.name == session.name {
+                Text("已复制 \(copiedSession!.label)")
                     .font(.system(size: 10))
                     .foregroundColor(.green)
             }
@@ -273,9 +289,9 @@ struct ZellijSessionView: View {
 
     // MARK: - Actions
 
-    private func loadSessionName() {
+    private func loadSessionName() async {
         guard let project = appState.activeProject else { return }
-        currentProjectName = ZellijService.shared.sessionName(for: project.path)
+        currentProjectName = await ZellijService.shared.sessionName(for: project.path)
     }
 
     private func refreshSessions() async {
@@ -284,33 +300,33 @@ struct ZellijSessionView: View {
 
         errorMessage = nil
         allSessions = await ZellijService.shared.listSessions()
-        updateGroupedSessions()
+        await updateGroupedSessions()
     }
 
-    private func setCopiedSession(_ name: String) {
-        copiedSessionName = name
+    private func setCopiedSession(_ name: String, label: String) {
+        copiedSession = (name, label)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if copiedSessionName == name {
-                copiedSessionName = nil
+            if copiedSession?.name == name {
+                copiedSession = nil
             }
         }
     }
 
-    private func copyCreateOrAttachCommand() {
+    private func copyCreateOrAttachCommand() async {
         guard let project = appState.activeProject else { return }
-        let sessionName = ZellijService.shared.sessionName(for: project.path)
+        let sessionName = await ZellijService.shared.sessionName(for: project.path)
         ZellijService.shared.copyCreateOrAttachCommand(for: sessionName, path: project.path)
-        setCopiedSession(sessionName)
+        setCopiedSession(sessionName, label: "Attach")
     }
 
     private func copySwitchCommand(_ sessionName: String) {
         ZellijService.shared.copySwitchCommand(for: sessionName)
-        setCopiedSession(sessionName)
+        setCopiedSession(sessionName, label: "Switch")
     }
 
     private func copyAttachCommand(_ sessionName: String) {
         ZellijService.shared.copyAttachCommand(for: sessionName)
-        setCopiedSession(sessionName)
+        setCopiedSession(sessionName, label: "Attach")
     }
 
     private func deleteSession(_ session: ZellijSession) async {
@@ -322,6 +338,7 @@ struct ZellijSessionView: View {
                 try await ZellijService.shared.killSession(session.name)
             }
             await refreshSessions()
+            sessionToDelete = nil
         } catch {
             errorMessage = error.localizedDescription
         }

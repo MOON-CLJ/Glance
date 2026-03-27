@@ -1,117 +1,83 @@
 import Foundation
 import AppKit
 
-enum SessionStatus: String, CaseIterable {
-    case exited = "EXITED"
-    case current = "current"
-    case running = "running"
-    
-    var displayName: String {
-        switch self {
-        case .exited: return "已退出"
-        case .current: return "当前"
-        case .running: return "运行中"
-        }
-    }
-    
-    var color: NSColor {
-        switch self {
-        case .exited: return .systemGray
-        case .current: return .systemGreen
-        case .running: return .systemBlue
-        }
-    }
-}
-
-struct ZellijSession: Identifiable, Hashable {
-    let id = UUID()
-    let name: String
-    let status: SessionStatus
-    let createdTime: String
-}
-
-struct GitInfo {
-    let org: String
-    let repo: String
-    let worktree: String?
-}
-
-enum ZellijError: LocalizedError {
-    case executionFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .executionFailed(let message):
-            return "Zellij: \(message)"
-        }
-    }
-}
-
 class ZellijService {
     static let shared = ZellijService()
 
-    private let zellijPath = "/opt/homebrew/bin/zellij"
+    private let zellijPath: String
+    private var sessionNameCache: [String: String] = [:]
 
-    private init() {}
+    private init() {
+        zellijPath = Self.resolveZellijPath()
+    }
+
+    private static func resolveZellijPath() -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = ["zellij"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return "zellij" }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return path.isEmpty ? "/opt/homebrew/bin/zellij" : path
+        } catch {
+            return "/opt/homebrew/bin/zellij"
+        }
+    }
 
     // MARK: - Session Name
 
-    func sessionName(for path: String) -> String {
-        if let gitInfo = parseGitRepo(path) {
-            var name = "\(gitInfo.org)·\(gitInfo.repo)"
-            if let worktree = gitInfo.worktree {
-                name += "·\(worktree)"
-            }
-            return name
+    func sessionName(for path: String) async -> String {
+        if let cached = sessionNameCache[path] {
+            return cached
         }
 
-        return path.replacingOccurrences(of: "/", with: "·")
+        let name: String
+        if let gitInfo = await parseGitRepo(path) {
+            var n = "\(gitInfo.org)·\(gitInfo.repo)"
+            if let worktree = gitInfo.worktree {
+                n += "·\(worktree)"
+            }
+            name = n
+        } else {
+            name = path.replacingOccurrences(of: "/", with: "·")
+        }
+
+        sessionNameCache[path] = name
+        return name
     }
 
-    private func parseGitRepo(_ path: String) -> GitInfo? {
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: GitInfo?
+    private func parseGitRepo(_ path: String) async -> GitInfo? {
+        let remoteOutput = await CLIService.shared.runCommand(
+            "/usr/bin/git",
+            arguments: ["-C", path, "remote", "-v"]
+        )
 
-        Task {
-            // 执行 git remote -v 获取 origin
-            let remoteOutput = await CLIService.shared.runCommand(
-                "/usr/bin/git",
-                arguments: ["-C", path, "remote", "-v"]
-            )
-
-            var originUrl: String?
-            for line in remoteOutput.split(separator: "\n") {
-                let str = String(line)
-                if str.hasPrefix("origin") {
-                    let components = str.split(separator: "\t")
-                    if components.count >= 2 {
-                        originUrl = String(components[1].split(separator: " ").first ?? "")
-                        break
-                    }
+        var originUrl: String?
+        for line in remoteOutput.split(separator: "\n") {
+            let str = String(line)
+            if str.hasPrefix("origin") {
+                let components = str.split(separator: "\t")
+                if components.count >= 2 {
+                    originUrl = String(components[1].split(separator: " ").first ?? "")
+                    break
                 }
             }
-
-            guard let url = originUrl else {
-                semaphore.signal()
-                return
-            }
-
-            // 解析 org 和 repo
-            let (org, repo) = parseGitUrl(url)
-            guard let org = org, let repo = repo else {
-                semaphore.signal()
-                return
-            }
-
-            // 检测 worktree
-            let worktree = await detectWorktree(path)
-
-            result = GitInfo(org: org, repo: repo, worktree: worktree)
-            semaphore.signal()
         }
 
-        semaphore.wait()
-        return result
+        guard let url = originUrl else { return nil }
+
+        let (org, repo) = parseGitUrl(url)
+        guard let org = org, let repo = repo else { return nil }
+
+        let worktree = await detectWorktree(path)
+
+        return GitInfo(org: org, repo: repo, worktree: worktree)
     }
 
     /// 解析 git URL 获取 org 和 repo
@@ -156,28 +122,26 @@ class ZellijService {
         let toplevel = lines[0]
         let superproject = lines[1]
 
-        // 如果有 superproject，说明是 submodule，worktree 名称为当前目录名
         if !superproject.isEmpty && superproject != toplevel {
             return (path as NSString).lastPathComponent
         }
 
-        // 检测是否是 git worktree
-        let worktreeOutput = await CLIService.shared.runCommand(
+        async let worktreeOutput = CLIService.shared.runCommand(
             "/usr/bin/git",
             arguments: ["-C", path, "worktree", "list", "--porcelain"]
         )
+        async let branchOutput = CLIService.shared.runCommand(
+            "/usr/bin/git",
+            arguments: ["-C", path, "rev-parse", "--abbrev-ref", "HEAD"]
+        )
 
-        for line in worktreeOutput.split(separator: "\n") {
+        let worktreeList = await worktreeOutput
+        for line in worktreeList.split(separator: "\n") {
             let str = String(line)
             if str.hasPrefix("worktree ") {
                 let worktreePath = String(str.dropFirst("worktree ".count))
                 if worktreePath == path && worktreePath != toplevel {
-                    // 这是一个 worktree，获取分支名
-                    let branchOutput = await CLIService.shared.runCommand(
-                        "/usr/bin/git",
-                        arguments: ["-C", path, "rev-parse", "--abbrev-ref", "HEAD"]
-                    )
-                    let branch = branchOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let branch = await branchOutput.trimmingCharacters(in: .whitespacesAndNewlines)
                     return branch.isEmpty ? nil : branch
                 }
             }
@@ -269,9 +233,7 @@ class ZellijService {
     }
 
     func copySwitchCommand(for name: String) {
-        let command = switchCommand(for: name)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(command, forType: .string)
+        copyToClipboard(switchCommand(for: name))
     }
 
     func attachCommand(for name: String) -> String {
@@ -279,9 +241,7 @@ class ZellijService {
     }
 
     func copyAttachCommand(for name: String) {
-        let command = attachCommand(for: name)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(command, forType: .string)
+        copyToClipboard(attachCommand(for: name))
     }
 
     func createOrAttachCommand(for name: String, path: String) -> String {
@@ -289,21 +249,24 @@ class ZellijService {
     }
 
     func copyCreateOrAttachCommand(for name: String, path: String) {
-        let command = createOrAttachCommand(for: name, path: path)
+        copyToClipboard(createOrAttachCommand(for: name, path: path))
+    }
+
+    private func copyToClipboard(_ text: String) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(command, forType: .string)
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     private func runZellij(arguments: [String], workingDirectory: String? = nil) async throws {
-        let output = await CLIService.shared.runCommand(
+        let result = await CLIService.shared.runCommandFull(
             zellijPath,
             arguments: arguments,
             cwd: workingDirectory
         )
 
-        // zellij 输出到 stderr 时返回空，需要检查实际是否有错误
-        if output.contains("error") || output.contains("Error") {
-            throw ZellijError.executionFailed(output)
+        if result.exitCode != 0 {
+            let message = result.stderr.isEmpty ? result.stdout : result.stderr
+            throw ZellijError.executionFailed(message)
         }
     }
 }
