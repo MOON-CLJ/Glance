@@ -11,6 +11,8 @@ struct ZellijSessionView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var copiedSessionName: String?
+    @State private var showDeleteConfirmation = false
+    @State private var sessionToDelete: ZellijSession?
 
     // MARK: - Group Sessions
 
@@ -73,6 +75,21 @@ struct ZellijSessionView: View {
             dismiss()
             return .handled
         }
+        .alert("确认删除", isPresented: $showDeleteConfirmation) {
+            Button("取消", role: .cancel) {}
+            Button("删除", role: .destructive) {
+                if let session = sessionToDelete {
+                    Task { await deleteSession(session) }
+                }
+            }
+        } message: {
+            if let session = sessionToDelete {
+                let message = session.status == .exited
+                    ? "此 session 已退出。"
+                    : "此操作将终止该 session。"
+                Text("确定要删除 session \"\(session.name)\" 吗？\n\(message)")
+            }
+        }
     }
 
     // MARK: - Sections
@@ -102,25 +119,11 @@ struct ZellijSessionView: View {
                 .foregroundColor(.secondary)
                 .textSelection(.enabled)
 
-            HStack(spacing: 8) {
-                Button(action: { attachCurrentProject() }) {
-                    Label("创建/附加 Session", systemImage: "terminal")
-                        .font(.system(size: 12))
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button(action: { copySwitchCommand(currentProjectName) }) {
-                    Label(copiedSessionName == currentProjectName ? "已复制!" : "复制Switch Session命令", systemImage: "doc.on.doc")
-                        .font(.system(size: 12))
-                }
-                .buttonStyle(.bordered)
-
-                Button(action: { copyAttachCommand(currentProjectName) }) {
-                    Label("复制Attach Session命令", systemImage: "doc.on.doc")
-                        .font(.system(size: 12))
-                }
-                .buttonStyle(.bordered)
+            Button(action: { attachCurrentProject() }) {
+                Label("创建/附加 Session", systemImage: "terminal")
+                    .font(.system(size: 12))
             }
+            .buttonStyle(.borderedProminent)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -211,13 +214,26 @@ struct ZellijSessionView: View {
 
     private func sessionRow(_ session: ZellijSession) -> some View {
         HStack {
-            Image(systemName: "terminal")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(nsColor: session.status.color))
 
-            Text(session.name)
-                .font(.system(size: 12))
-                .textSelection(.enabled)
+                    Text(session.name)
+                        .font(.system(size: 12))
+                        .textSelection(.enabled)
+                    
+                    statusBadge(for: session.status)
+                }
+                
+                // 创建时间
+                if !session.createdTime.isEmpty {
+                    Text(session.createdTime)
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            }
 
             Spacer()
 
@@ -241,15 +257,18 @@ struct ZellijSessionView: View {
             .buttonStyle(.borderless)
             .help("复制Attach Session命令")
 
-            Button(action: { killSession(session.name) }) {
-                Image(systemName: "xmark")
+            Button(action: { 
+                sessionToDelete = session
+                showDeleteConfirmation = true
+            }) {
+                Image(systemName: deleteIcon(for: session.status))
                     .font(.system(size: 10))
                     .foregroundColor(.red)
             }
             .buttonStyle(.borderless)
-            .help("关闭 Session")
+            .help(deleteHelp(for: session.status))
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 
     // MARK: - Actions
@@ -308,16 +327,36 @@ struct ZellijSessionView: View {
         }
     }
 
-    private func killSession(_ name: String) {
-        Task {
-            do {
-                errorMessage = nil
-                try await ZellijService.shared.killSession(name)
-                await refreshSessions()
-            } catch {
-                errorMessage = error.localizedDescription
+    private func deleteSession(_ session: ZellijSession) async {
+        do {
+            errorMessage = nil
+            if session.status == .exited {
+                try await ZellijService.shared.deleteSession(session.name)
+            } else {
+                try await ZellijService.shared.killSession(session.name)
             }
+            await refreshSessions()
+        } catch {
+            errorMessage = error.localizedDescription
         }
+    }
+
+    private func deleteIcon(for status: SessionStatus) -> String {
+        status == .exited ? "trash" : "xmark"
+    }
+
+    private func deleteHelp(for status: SessionStatus) -> String {
+        status == .exited ? "删除已退出 Session" : "关闭 Session"
+    }
+
+    private func statusBadge(for status: SessionStatus) -> some View {
+        Text(status.displayName)
+            .font(.system(size: 9))
+            .foregroundColor(Color(nsColor: status.color))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Color(nsColor: status.color).opacity(0.15))
+            .cornerRadius(3)
     }
 }
 

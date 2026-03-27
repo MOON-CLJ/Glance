@@ -1,9 +1,33 @@
 import Foundation
 import AppKit
 
+enum SessionStatus: String, CaseIterable {
+    case exited = "EXITED"
+    case current = "current"
+    case running = "running"
+    
+    var displayName: String {
+        switch self {
+        case .exited: return "已退出"
+        case .current: return "当前"
+        case .running: return "运行中"
+        }
+    }
+    
+    var color: NSColor {
+        switch self {
+        case .exited: return .systemGray
+        case .current: return .systemGreen
+        case .running: return .systemBlue
+        }
+    }
+}
+
 struct ZellijSession: Identifiable, Hashable {
     let id = UUID()
     let name: String
+    let status: SessionStatus
+    let createdTime: String
 }
 
 struct GitInfo {
@@ -167,14 +191,65 @@ class ZellijService {
     func listSessions() async -> [ZellijSession] {
         let output = await CLIService.shared.runCommand(
             zellijPath,
-            arguments: ["list-sessions", "-s"]
+            arguments: ["list-sessions"]
         )
 
         return output
             .split(separator: "\n")
-            .map { String($0) }
-            .filter { !$0.isEmpty }
-            .map { ZellijSession(name: $0) }
+            .compactMap { line in
+                parseSessionLine(String(line))
+            }
+    }
+    
+    /// 解析 session 输出行
+    /// 格式: `session-name [Created X ago] (status)` 或 `session-name [Created X ago]`
+    private func parseSessionLine(_ line: String) -> ZellijSession? {
+        let cleanLine = removeANSICodes(line)
+        
+        // 查找 "[Created " 和 " ago]" 的位置
+        let createdPrefix = "[Created "
+        let createdSuffix = " ago]"
+        
+        guard let createdStart = cleanLine.range(of: createdPrefix),
+              let createdEnd = cleanLine.range(of: createdSuffix, range: createdStart.upperBound..<cleanLine.endIndex) else {
+            let name = cleanLine.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty else { return nil }
+            return ZellijSession(name: name, status: .running, createdTime: "")
+        }
+        
+        // 提取时间
+        let createdTime = String(cleanLine[createdStart.upperBound..<createdEnd.lowerBound])
+        
+        // 提取名称（时间之前的部分）
+        let name = String(cleanLine[..<createdStart.lowerBound]).trimmingCharacters(in: .whitespaces)
+        
+        // 提取状态（时间之后的部分）
+        let statusPart = String(cleanLine[createdEnd.upperBound...]).trimmingCharacters(in: .whitespaces)
+        
+        let status: SessionStatus
+        if statusPart.contains("EXITED") {
+            status = .exited
+        } else if statusPart.contains("current") {
+            status = .current
+        } else {
+            status = .running
+        }
+        
+        return ZellijSession(name: name, status: status, createdTime: createdTime)
+    }
+    
+    // MARK: - ANSI Code Removal
+    
+    private static let ansiCodePattern = "\\x1B\\[[0-9;]*m"
+    private static let ansiCodeRegex: NSRegularExpression? = {
+        try? NSRegularExpression(pattern: ansiCodePattern, options: [])
+    }()
+    
+    /// 移除 ANSI 颜色码
+    private func removeANSICodes(_ string: String) -> String {
+        guard let regex = Self.ansiCodeRegex else { return string }
+        let range = NSRange(string.startIndex..., in: string)
+        return regex.stringByReplacingMatches(in: string, options: [], range: range, withTemplate: "")
     }
 
     func createOrAttach(sessionName: String, projectPath: String) async throws {
@@ -183,6 +258,10 @@ class ZellijService {
 
     func killSession(_ name: String) async throws {
         try await runZellij(arguments: ["kill-session", name])
+    }
+    
+    func deleteSession(_ name: String) async throws {
+        try await runZellij(arguments: ["delete-session", name])
     }
 
     func switchCommand(for name: String) -> String {
