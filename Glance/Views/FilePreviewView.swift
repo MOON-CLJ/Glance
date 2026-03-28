@@ -154,8 +154,7 @@ struct FilePreviewView: View {
 
     private func performSearch(query: String) {
         guard !query.isEmpty else { clearSearch(); return }
-        let escaped = query.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
+        let escaped = escapeJSString(query)
         webViewStore.webView?.evaluateJavaScript("searchText('\(escaped)')") { result, _ in
             if let info = result as? String { matchInfo = info }
         }
@@ -186,6 +185,13 @@ struct FilePreviewView: View {
     }
 }
 
+private func escapeJSString(_ s: String) -> String {
+    s.replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "'", with: "\\'")
+        .replacingOccurrences(of: "\n", with: "\\n")
+        .replacingOccurrences(of: "\r", with: "\\r")
+}
+
 /// 持有 WKWebView 引用，供 FilePreviewView 调用 JS
 class WebViewStore: ObservableObject {
     var webView: WKWebView?
@@ -199,65 +205,8 @@ struct CodeWebView: NSViewRepresentable {
     var scrollToLine: Int? = nil
     var highlightText: String? = nil
 
-    class Coordinator {
-        var lastContent: String = ""
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> WKWebView {
-        let webView = WKWebView()
-        webView.setValue(false, forKey: "drawsBackground")
-        webViewStore.webView = webView
-        context.coordinator.lastContent = content
-        loadHTML(into: webView)
-        return webView
-    }
-
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        webViewStore.webView = webView
-        if context.coordinator.lastContent == content {
-            // 同一个文件，只跳转行，不重新加载
-            if let line = scrollToLine {
-                let js: String
-                if let text = highlightText {
-                    let escaped = text.replacingOccurrences(of: "\\", with: "\\\\")
-                        .replacingOccurrences(of: "'", with: "\\'")
-                    js = "document.querySelectorAll('.highlight-match').forEach(function(m){var p=m.parentNode;p.replaceChild(document.createTextNode(m.textContent),m);p.normalize();});highlightAtLine(\(line),'\(escaped)');"
-                } else {
-                    js = "scrollToLine(\(line));"
-                }
-                webView.evaluateJavaScript(js)
-            }
-        } else {
-            context.coordinator.lastContent = content
-            loadHTML(into: webView)
-        }
-    }
-
-    private func buildInitCall() -> String {
-        guard let line = scrollToLine else { return "" }
-        if let text = highlightText {
-            let escaped = text.replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "'", with: "\\'")
-            return "setTimeout(function() { highlightAtLine(\(line), '\(escaped)'); }, 50);"
-        }
-        return "setTimeout(function() { scrollToLine(\(line)); }, 50);"
-    }
-
-    private func loadHTML(into webView: WKWebView) {
-        let escaped = content
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-
-        let lines = escaped.split(separator: "\n", omittingEmptySubsequences: false)
-        let lineCount = lines.count
-        let lineNumbers = (1...max(lineCount, 1)).map { "\($0)" }.joined(separator: "\n")
-        let codeContent = lines.joined(separator: "\n")
-
-        let html = """
+    private static let htmlShell: String = {
+        """
         <!DOCTYPE html>
         <html>
         <head>
@@ -308,15 +257,21 @@ struct CodeWebView: NSViewRepresentable {
         </head>
         <body>
         <div class="code-container">
-            <div class="line-numbers">\(lineNumbers)</div>
+            <div class="line-numbers"></div>
             <div class="code-content">
-                <pre><code class="language-\(language)">\(codeContent)</code></pre>
+                <pre><code class="language-plaintext"></code></pre>
             </div>
         </div>
         <script>
-        hljs.highlightAll();
-
-        \(buildInitCall())
+        function updateCode(lang, codeHtml, lineNums) {
+            var codeEl = document.querySelector('pre code');
+            codeEl.className = 'language-' + lang;
+            codeEl.removeAttribute('data-highlighted');
+            codeEl.innerHTML = codeHtml;
+            document.querySelector('.line-numbers').textContent = lineNums;
+            window.scrollTo(0, 0);
+            hljs.highlightElement(codeEl);
+        }
 
         function scrollToLine(n) {
             var lineHeight = parseFloat(getComputedStyle(document.body).lineHeight);
@@ -332,7 +287,6 @@ struct CodeWebView: NSViewRepresentable {
             var lines = text.split('\\n');
             if (lineNum < 1 || lineNum > lines.length) { scrollToLine(lineNum); return; }
 
-            // 计算目标文字在整个 textContent 中的偏移
             var offset = 0;
             for (var i = 0; i < lineNum - 1; i++) { offset += lines[i].length + 1; }
             var lineText = lines[lineNum - 1];
@@ -344,7 +298,6 @@ struct CodeWebView: NSViewRepresentable {
             var globalStart = offset + matchIdx;
             var globalEnd = globalStart + query.length;
 
-            // 在 DOM 的 text nodes 中定位 globalStart..globalEnd
             var walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
             var pos = 0;
             var startNode = null, startOff = 0, endNode = null, endOff = 0;
@@ -364,9 +317,7 @@ struct CodeWebView: NSViewRepresentable {
             }
             if (!startNode || !endNode) { scrollToLine(lineNum); return; }
 
-            // 先无动画滚动到目标行
             scrollToLine(lineNum);
-            // 再用 Range + mark 包裹高亮
             var range = document.createRange();
             range.setStart(startNode, startOff);
             range.setEnd(endNode, endOff);
@@ -454,7 +405,77 @@ struct CodeWebView: NSViewRepresentable {
         </body>
         </html>
         """
+    }()
 
-        webView.loadHTMLString(html, baseURL: nil)
+    class Coordinator: NSObject, WKNavigationDelegate {
+        var lastContent: String = ""
+        var pendingUpdate: (() -> Void)?
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            pendingUpdate?()
+            pendingUpdate = nil
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.navigationDelegate = context.coordinator
+        webViewStore.webView = webView
+        context.coordinator.lastContent = content
+        webView.loadHTMLString(Self.htmlShell, baseURL: nil)
+        context.coordinator.pendingUpdate = { [weak webView] in
+            guard let webView = webView else { return }
+            self.updateCodeInWebView(webView)
+        }
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        webViewStore.webView = webView
+        if context.coordinator.lastContent == content {
+            if let line = scrollToLine {
+                let js: String
+                if let text = highlightText {
+                    let escaped = escapeJSString(text)
+                    js = "document.querySelectorAll('.highlight-match').forEach(function(m){var p=m.parentNode;p.replaceChild(document.createTextNode(m.textContent),m);p.normalize();});highlightAtLine(\(line),'\(escaped)');"
+                } else {
+                    js = "scrollToLine(\(line));"
+                }
+                webView.evaluateJavaScript(js)
+            }
+        } else {
+            context.coordinator.lastContent = content
+            updateCodeInWebView(webView)
+        }
+    }
+
+    private func updateCodeInWebView(_ webView: WKWebView) {
+        let escaped = content
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+
+        let lines = escaped.split(separator: "\n", omittingEmptySubsequences: false)
+        let lineCount = lines.count
+        let lineNumbers = (1...max(lineCount, 1)).map { "\($0)" }.joined(separator: "\n")
+        let codeContent = lines.joined(separator: "\n")
+
+        let escapedCode = escapeJSString(codeContent)
+        let escapedLineNums = escapeJSString(lineNumbers)
+
+        var js = "updateCode('\(language)','\(escapedCode)','\(escapedLineNums)');"
+        if let line = scrollToLine {
+            if let text = highlightText {
+                let escaped = escapeJSString(text)
+                js += "setTimeout(function(){ highlightAtLine(\(line),'\(escaped)'); }, 50);"
+            } else {
+                js += "setTimeout(function(){ scrollToLine(\(line)); }, 50);"
+            }
+        }
+        webView.evaluateJavaScript(js)
     }
 }

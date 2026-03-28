@@ -3,10 +3,31 @@ import Foundation
 class CLIService {
     static let shared = CLIService()
 
-    private let fdPath = "/opt/homebrew/bin/fd"
-    private let rgPath = "/opt/homebrew/bin/rg"
+    private let fdPath: String
+    private let rgPath: String
 
-    private init() {}
+    private init() {
+        fdPath = Self.lookupPath("fd", fallback: "/opt/homebrew/bin/fd")
+        rgPath = Self.lookupPath("rg", fallback: "/opt/homebrew/bin/rg")
+    }
+
+    static func lookupPath(_ command: String, fallback: String) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = [command]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        do {
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !path.isEmpty { return path }
+            }
+        } catch {}
+        return fallback
+    }
 
     /// 使用 fd 搜索文件名（包含 / 时按路径匹配）
     func searchFiles(query: String, in directory: String) async -> [FileSearchResult] {
@@ -77,8 +98,7 @@ class CLIService {
                     path: path,
                     relativePath: relativePath,
                     lineNumber: lineNumber,
-                    lineContent: content.trimmingCharacters(in: .whitespaces),
-                    matchRanges: []
+                    lineContent: content.trimmingCharacters(in: .whitespaces)
                 )
             }
     }

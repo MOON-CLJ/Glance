@@ -40,11 +40,13 @@ struct SidebarView: View {
             reloadCurrentProject()
         }
         .onChange(of: watcher.changeId) { _, _ in
-            guard let rootPath = appState.activeRootPath else { return }
-            let latest = FileService.shared.listDirectory(path: rootPath)
-            rootNodes = FileNode.merge(existing: rootNodes, with: latest)
-            appState.activeProject?.refreshGitStatus()
-            appState.fileChangeCounter += 1
+            Task {
+                guard let rootPath = appState.activeRootPath else { return }
+                let latest = await FileService.shared.listDirectory(path: rootPath)
+                rootNodes = await FileNode.merge(existing: rootNodes, with: latest)
+                appState.activeProject?.refreshGitStatus()
+                appState.fileChangeCounter += 1
+            }
         }
         .onAppear {
             reloadCurrentProject()
@@ -53,8 +55,10 @@ struct SidebarView: View {
 
     private func reloadCurrentProject() {
         if let path = appState.activeRootPath {
-            rootNodes = FileService.shared.listDirectory(path: path)
             watcher.watch(path: path)
+            Task {
+                rootNodes = await FileService.shared.listDirectory(path: path)
+            }
         } else {
             rootNodes = []
             watcher.stop()
@@ -63,8 +67,10 @@ struct SidebarView: View {
 
     private func locateActiveFile() {
         guard let filePath = appState.activeFile else { return }
-        for node in rootNodes {
-            if node.expandToPath(filePath) { return }
+        Task {
+            for node in rootNodes {
+                if await node.expandToPath(filePath) { return }
+            }
         }
     }
 }
@@ -126,7 +132,7 @@ struct FileTreeRow: View {
             )
             .onChange(of: node.isExpanded) { _, expanded in
                 if expanded && !node.isLoaded {
-                    node.loadChildren()
+                    Task { await node.loadChildren() }
                 }
             }
         } else {

@@ -3,13 +3,12 @@ import Foundation
 class FileService {
     static let shared = FileService()
 
-    private let fdPath = "/opt/homebrew/bin/fd"
+    private let fdPath = CLIService.lookupPath("fd", fallback: "/opt/homebrew/bin/fd")
 
     private init() {}
 
-    /// 列出目录内容，目录优先，通过 fd 自动遵守 .gitignore
-    func listDirectory(path: String) -> [FileNode] {
-        let items = runFd(in: path)
+    func listDirectory(path: String) async -> [FileNode] {
+        let items = await runFd(in: path)
 
         var dirs: [FileNode] = []
         var files: [FileNode] = []
@@ -21,7 +20,6 @@ class FileService {
             var isDir: ObjCBool = false
             fm.fileExists(atPath: fullPath, isDirectory: &isDir)
 
-            // 检测软链接：用 lstat 而非 stat，避免跟随链接
             let isSymlink: Bool = {
                 var stat = stat()
                 return lstat(fullPath, &stat) == 0 && (stat.st_mode & S_IFMT) == S_IFLNK
@@ -45,40 +43,45 @@ class FileService {
         return dirs + files
     }
 
-    /// 用 fd --max-depth 1 列出目录直接子项，遵守 .fdignore 但不遵守 .gitignore
-    private func runFd(in directory: String) -> [String] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: fdPath)
-        process.arguments = [
-            "--max-depth", "1",
-            "--hidden",
-            "--no-ignore-vcs",
-            "--exclude", ".git",
-            "--exclude", ".DS_Store",
-            ".", directory
-        ]
+    private func runFd(in directory: String) async -> [String] {
+        let fdPath = self.fdPath
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: fdPath)
+                process.arguments = [
+                    "--max-depth", "1",
+                    "--hidden",
+                    "--no-ignore-vcs",
+                    "--exclude", ".git",
+                    "--exclude", ".DS_Store",
+                    ".", directory
+                ]
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = Pipe()
 
-        do {
-            try process.run()
-            process.waitUntilExit()
+                do {
+                    try process.run()
+                    process.waitUntilExit()
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8) ?? ""
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let output = String(data: data, encoding: .utf8) ?? ""
 
-            return output
-                .split(separator: "\n")
-                .map { String($0) }
-                .sorted { a, b in
-                    (a as NSString).lastPathComponent.localizedStandardCompare(
-                        (b as NSString).lastPathComponent
-                    ) == .orderedAscending
+                    let result = output
+                        .split(separator: "\n")
+                        .map { String($0) }
+                        .sorted { a, b in
+                            (a as NSString).lastPathComponent.localizedStandardCompare(
+                                (b as NSString).lastPathComponent
+                            ) == .orderedAscending
+                        }
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(returning: [])
                 }
-        } catch {
-            return []
+            }
         }
     }
 

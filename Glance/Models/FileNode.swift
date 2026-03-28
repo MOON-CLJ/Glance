@@ -20,47 +20,43 @@ class FileNode: Identifiable, ObservableObject {
         self.isHidden = isHidden
     }
 
-    func loadChildren() {
+    func loadChildren() async {
         guard isDirectory, !isLoaded else { return }
-        children = FileService.shared.listDirectory(path: path)
+        children = await FileService.shared.listDirectory(path: path)
     }
 
-    /// 重新加载子节点（已加载过的目录才刷新），保留展开状态
-    func reloadChildren() {
+    func reloadChildren() async {
         guard isDirectory, isLoaded else { return }
-        let latest = FileService.shared.listDirectory(path: path)
-        children = Self.merge(existing: children ?? [], with: latest)
+        let latest = await FileService.shared.listDirectory(path: path)
+        children = await Self.merge(existing: children ?? [], with: latest)
     }
 
-    func toggleExpanded() {
+    func toggleExpanded() async {
         if !isLoaded {
-            loadChildren()
+            await loadChildren()
         }
         isExpanded.toggle()
     }
 
-    /// 在树中查找路径匹配的节点并刷新其 children
-    func refreshNode(forPath targetPath: String) {
+    func refreshNode(forPath targetPath: String) async {
         if self.path == targetPath {
-            reloadChildren()
+            await reloadChildren()
             return
         }
-        // 只在已加载的子目录中递归查找
         guard let children = children else { return }
         for child in children where child.isDirectory {
             if targetPath.hasPrefix(child.path + "/") || targetPath == child.path {
-                child.refreshNode(forPath: targetPath)
+                await child.refreshNode(forPath: targetPath)
                 return
             }
         }
     }
 
-    /// 递归展开到目标文件路径，返回是否找到
     @discardableResult
-    func expandToPath(_ targetPath: String) -> Bool {
+    func expandToPath(_ targetPath: String) async -> Bool {
         let normalizedPath = path.hasSuffix("/") ? String(path.dropLast()) : path
         guard isDirectory else { return normalizedPath == targetPath }
-        if !isLoaded { loadChildren() }
+        if !isLoaded { await loadChildren() }
         guard let children = children else { return false }
         for child in children {
             let childPath = child.path.hasSuffix("/") ? String(child.path.dropLast()) : child.path
@@ -69,7 +65,7 @@ class FileNode: Identifiable, ObservableObject {
                 return true
             }
             if child.isDirectory && targetPath.hasPrefix(childPath + "/") {
-                if child.expandToPath(targetPath) {
+                if await child.expandToPath(targetPath) {
                     isExpanded = true
                     return true
                 }
@@ -78,20 +74,21 @@ class FileNode: Identifiable, ObservableObject {
         return false
     }
 
-    /// 增量合并：保留已存在节点的展开状态和 children，移除已删除的，插入新增的
-    static func merge(existing: [FileNode], with latest: [FileNode]) -> [FileNode] {
+    static func merge(existing: [FileNode], with latest: [FileNode]) async -> [FileNode] {
         let existingMap = Dictionary(existing.map { ($0.path, $0) }, uniquingKeysWith: { _, new in new })
-        return latest.map { newNode in
+        var result: [FileNode] = []
+        for newNode in latest {
             if let old = existingMap[newNode.path] {
-                // 对已展开且已加载的子目录递归 merge
                 if old.isDirectory, old.isLoaded, let oldChildren = old.children {
-                    let latestChildren = FileService.shared.listDirectory(path: old.path)
-                    old.children = merge(existing: oldChildren, with: latestChildren)
+                    let latestChildren = await FileService.shared.listDirectory(path: old.path)
+                    old.children = await merge(existing: oldChildren, with: latestChildren)
                 }
-                return old
+                result.append(old)
+            } else {
+                result.append(newNode)
             }
-            return newNode
         }
+        return result
     }
 }
 

@@ -13,55 +13,22 @@ struct GrepSearchView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 搜索框
-            HStack {
-                Image(systemName: "text.magnifyingglass")
-                    .foregroundColor(.secondary)
-                TextField("Search in files...", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 16))
-                    .onSubmit { selectCurrent() }
-            }
-            .padding(12)
-            .background(Color(nsColor: .controlBackgroundColor))
+            searchField("Search in files...", icon: "text.magnifyingglass", query: $query, onSubmit: selectCurrent)
 
             Divider()
 
-            // 上下分栏：结果列表 + 代码预览
             VSplitView {
-                // 上半：结果列表
                 Group {
                     if results.isEmpty && !query.isEmpty {
                         Text("No results")
                             .foregroundColor(.secondary)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
-                        List(selection: Binding(
-                            get: { results.indices.contains(selectedIndex) ? results[selectedIndex].id : nil },
-                            set: { newId in
-                                if let idx = results.firstIndex(where: { $0.id == newId }) {
-                                    selectedIndex = idx
-                                }
-                            }
-                        )) {
-                            ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
-                                GrepSearchRow(result: result, isSelected: index == selectedIndex)
-                                    .tag(result.id)
-                                    .onTapGesture(count: 2) {
-                                        selectedIndex = index
-                                        selectCurrent()
-                                    }
-                                    .onTapGesture {
-                                        selectedIndex = index
-                                    }
-                            }
-                        }
-                        .listStyle(.plain)
+                        resultList
                     }
                 }
                 .frame(minHeight: 150)
 
-                // 下半：代码预览
                 Group {
                     if previewContent.isEmpty {
                         Text("Select a result to preview")
@@ -85,20 +52,32 @@ struct GrepSearchView: View {
             performSearch(query: newQuery)
         }
         .onChange(of: selectedIndex) { _, _ in
-            DispatchQueue.main.async { loadPreview() }
+            loadPreview()
         }
-        .onKeyPress(.upArrow) {
-            if selectedIndex > 0 { selectedIndex -= 1 }
-            return .handled
+        .searchKeyboardHandling(
+            selectedIndex: $selectedIndex,
+            resultCount: results.count,
+            onClose: { appState.showGrepSearch = false }
+        )
+    }
+
+    private var resultList: some View {
+        List(selection: SearchSelection.binding(for: results, selectedIndex: selectedIndex) { idx in
+            selectedIndex = idx
+        }) {
+            ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
+                GrepSearchRow(result: result)
+                    .tag(result.id)
+                    .onTapGesture(count: 2) {
+                        selectedIndex = index
+                        selectCurrent()
+                    }
+                    .onTapGesture {
+                        selectedIndex = index
+                    }
+            }
         }
-        .onKeyPress(.downArrow) {
-            if selectedIndex < results.count - 1 { selectedIndex += 1 }
-            return .handled
-        }
-        .onKeyPress(.escape) {
-            appState.showGrepSearch = false
-            return .handled
-        }
+        .listStyle(.plain)
     }
 
     private func performSearch(query: String) {
@@ -152,7 +131,6 @@ struct GrepSearchView: View {
 
 struct GrepSearchRow: View {
     let result: GrepSearchResult
-    let isSelected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
