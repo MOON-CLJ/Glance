@@ -6,6 +6,12 @@ class ZellijService {
     static let shared = ZellijService()
 
     private let zellijPath: String
+    /// Session 名最大长度。
+    /// zellij 通过 Unix domain socket 通信，socket 文件路径 = socket 目录 + "/" + session 名。
+    /// macOS 上 struct sockaddr_un.sun_path 为 104 字节（含 null terminator），可用 103 字节。
+    /// socket 目录（如 /var/folders/.../T/zellij-501/contract_version_1）约 80 字节，
+    /// 因此 session 名最多约 23 字节，超出会导致 zellij attach -c 卡住。
+    private let maxSessionNameLen = 23
     private var sessionNameCache: [String: String] = [:]
     private let cacheLock = OSAllocatedUnfairLock(initialState: ())
 
@@ -38,19 +44,56 @@ class ZellijService {
         let cached: String? = cacheLock.withLock { sessionNameCache[path] }
         if let cached { return cached }
 
-        let name: String
+        let rawName: String
         if let gitInfo = await parseGitRepo(path) {
-            var n = "\(gitInfo.org)·\(gitInfo.repo)"
             if let worktree = gitInfo.worktree {
-                n += "·\(worktree)"
+                let sanitized = sanitizeName(worktree)
+                rawName = sanitized.count > maxSessionNameLen
+                    ? String(sanitized.prefix(maxSessionNameLen))
+                    : sanitized
+            } else {
+                let org = sanitizeName(gitInfo.org)
+                let repo = sanitizeName(gitInfo.repo)
+
+                if repo.count >= maxSessionNameLen - 1 {
+                    rawName = String(repo.prefix(maxSessionNameLen))
+                } else {
+                    let maxOrgLen = maxSessionNameLen - 1 - repo.count // 1 for "-"
+                    let truncatedOrg = org.count <= maxOrgLen
+                        ? org
+                        : String(org.prefix(maxOrgLen))
+                    rawName = "\(truncatedOrg)-\(repo)"
+                }
             }
-            name = n
         } else {
-            name = path.replacingOccurrences(of: "/", with: "·")
+            let sanitized = sanitizeName((path as NSString).lastPathComponent)
+            rawName = sanitized.count > maxSessionNameLen
+                ? String(sanitized.prefix(maxSessionNameLen))
+                : sanitized
         }
 
+        let name = ensureStartsWithAlphanumeric(rawName)
         cacheLock.withLock { sessionNameCache[path] = name }
         return name
+    }
+
+    /// 确保以字母或数字开头（zellij 会将以 - 开头的名称解析为选项）
+    private func ensureStartsWithAlphanumeric(_ name: String) -> String {
+        let trimmed = name.drop(while: { $0 == "-" || $0 == "_" })
+        return trimmed.isEmpty ? "session" : String(trimmed)
+    }
+
+    /// 将非 ASCII 字母、数字、-、_ 的字符替换为 -
+    /// 只保留 ASCII 确保字符数 = UTF-8 字节数，方便长度控制
+    private func sanitizeName(_ name: String) -> String {
+        name.unicodeScalars.map { scalar in
+            (scalar >= "a" && scalar <= "z") ||
+            (scalar >= "A" && scalar <= "Z") ||
+            (scalar >= "0" && scalar <= "9") ||
+            scalar == "-" || scalar == "_"
+                ? String(scalar)
+                : "-"
+        }.joined()
     }
 
     private func parseGitRepo(_ path: String) async -> GitInfo? {
