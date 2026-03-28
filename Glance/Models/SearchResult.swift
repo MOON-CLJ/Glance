@@ -1,8 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct FileSearchResult: Identifiable {
-    let id = UUID()
+struct SearchResultBase {
     let path: String
     let relativePath: String
 
@@ -11,16 +10,30 @@ struct FileSearchResult: Identifiable {
     }
 }
 
-struct GrepSearchResult: Identifiable {
+struct FileSearchResult: Identifiable, SearchResultProtocol {
     let id = UUID()
-    let path: String
-    let relativePath: String
+    let base: SearchResultBase
+
+    var path: String { base.path }
+    var relativePath: String { base.relativePath }
+    var fileName: String { base.fileName }
+}
+
+struct GrepSearchResult: Identifiable, SearchResultProtocol {
+    let id = UUID()
+    let base: SearchResultBase
     let lineNumber: Int
     let lineContent: String
 
-    var fileName: String {
-        (path as NSString).lastPathComponent
-    }
+    var path: String { base.path }
+    var relativePath: String { base.relativePath }
+    var fileName: String { base.fileName }
+}
+
+protocol SearchResultProtocol {
+    var path: String { get }
+    var relativePath: String { get }
+    var fileName: String { get }
 }
 
 enum SearchSelection {

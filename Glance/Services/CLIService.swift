@@ -56,7 +56,7 @@ class CLIService {
                 let relativePath = path.hasPrefix(directory)
                     ? String(path.dropFirst(directory.count + 1))
                     : path
-                return FileSearchResult(path: path, relativePath: relativePath)
+                return FileSearchResult(base: SearchResultBase(path: path, relativePath: relativePath))
             }
     }
 
@@ -95,8 +95,7 @@ class CLIService {
                     : path
 
                 return GrepSearchResult(
-                    path: path,
-                    relativePath: relativePath,
+                    base: SearchResultBase(path: path, relativePath: relativePath),
                     lineNumber: lineNumber,
                     lineContent: content.trimmingCharacters(in: .whitespaces)
                 )

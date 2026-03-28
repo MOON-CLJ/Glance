@@ -51,21 +51,21 @@ class AppState: ObservableObject {
     }
 
     /// 添加目录（指定路径）
-    func addFolder(path: String) {
-        // 如果已打开则激活
+    func addFolder(path: String, save: Bool = true) {
         if let idx = projects.firstIndex(where: { $0.path == path }) {
             activeProjectIndex = idx
             return
         }
 
         let project = ProjectState(path: path)
-        // 监听 ProjectState 的变化，转发给 AppState 让 SwiftUI 刷新
         projectCancellables[project.id] = project.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
         projects.append(project)
         activeProjectIndex = projects.count - 1
-        saveProjects()
+        if save {
+            saveProjects()
+        }
     }
 
     /// 关闭目录
@@ -89,11 +89,13 @@ class AppState: ObservableObject {
         guard let paths = UserDefaults.standard.stringArray(forKey: savedProjectsKey) else { return }
         let fm = FileManager.default
         for path in paths {
-            // 只恢复仍然存在的目录
             var isDir: ObjCBool = false
             if fm.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
-                addFolder(path: path)
+                addFolder(path: path, save: false)
             }
+        }
+        if !projects.isEmpty {
+            saveProjects()
         }
     }
 }
