@@ -74,16 +74,7 @@ class AppState: ObservableObject {
         let removed = projects[index]
         projectCancellables.removeValue(forKey: removed.id)
         projects.remove(at: index)
-
-        if projects.isEmpty {
-            activeProjectIndex = nil
-        } else if let active = activeProjectIndex {
-            if active >= projects.count {
-                activeProjectIndex = projects.count - 1
-            } else if active > index {
-                activeProjectIndex = active - 1
-            }
-        }
+        activeProjectIndex = adjustIndex(afterRemoving: index, from: projects.count, active: activeProjectIndex)
         saveProjects()
     }
 

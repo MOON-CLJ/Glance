@@ -95,10 +95,10 @@ class FileService {
         let ext = (name as NSString).pathExtension.lowercased()
         switch ext {
         case "swift": return "swift"
-        case "py": return "doc.text"
-        case "go": return "doc.text"
-        case "js", "ts", "jsx", "tsx": return "doc.text"
-        case "json", "yaml", "yml", "toml": return "doc.text"
+        case "py", "go", "js", "ts", "jsx", "tsx": return "curlybraces"
+        case "json", "yaml", "yml", "toml": return "gearshape"
+        case "html": return "safari"
+        case "css", "scss", "less": return "paintbrush"
         case "md": return "doc.richtext"
         case "sh", "bash", "zsh": return "terminal"
         case "png", "jpg", "jpeg", "gif", "svg": return "photo"
@@ -109,28 +109,29 @@ class FileService {
     /// 检测文件语言（用于语法高亮）
     func detectLanguage(path: String) -> String {
         let ext = (path as NSString).pathExtension.lowercased()
-        let languageMap: [String: String] = [
-            "swift": "swift", "py": "python", "js": "javascript",
-            "ts": "typescript", "tsx": "tsx", "jsx": "jsx",
-            "go": "go", "rs": "rust", "rb": "ruby",
-            "java": "java", "kt": "kotlin", "c": "c",
-            "cpp": "cpp", "h": "c", "hpp": "cpp",
-            "m": "objectivec", "mm": "objectivec",
-            "sh": "bash", "zsh": "bash", "bash": "bash",
-            "json": "json", "yaml": "yaml", "yml": "yaml",
-            "toml": "toml", "xml": "xml", "html": "html",
-            "css": "css", "scss": "scss", "less": "less",
-            "md": "markdown", "sql": "sql", "lua": "lua",
-            "vim": "vim", "dockerfile": "dockerfile",
-            "makefile": "makefile", "cmake": "cmake",
-            "r": "r", "php": "php", "pl": "perl",
-        ]
 
         let fileName = (path as NSString).lastPathComponent.lowercased()
         if fileName == "makefile" || fileName == "gnumakefile" { return "makefile" }
         if fileName == "dockerfile" { return "dockerfile" }
         if fileName == "cmakelists.txt" { return "cmake" }
 
-        return languageMap[ext] ?? "plaintext"
+        return Self.languageMap[ext] ?? "plaintext"
     }
+
+    private static let languageMap: [String: String] = [
+        "swift": "swift", "py": "python", "js": "javascript",
+        "ts": "typescript", "tsx": "tsx", "jsx": "jsx",
+        "go": "go", "rs": "rust", "rb": "ruby",
+        "java": "java", "kt": "kotlin", "c": "c",
+        "cpp": "cpp", "h": "c", "hpp": "cpp",
+        "m": "objectivec", "mm": "objectivec",
+        "sh": "bash", "zsh": "bash", "bash": "bash",
+        "json": "json", "yaml": "yaml", "yml": "yaml",
+        "toml": "toml", "xml": "xml", "html": "html",
+        "css": "css", "scss": "scss", "less": "less",
+        "md": "markdown", "sql": "sql", "lua": "lua",
+        "vim": "vim", "dockerfile": "dockerfile",
+        "makefile": "makefile", "cmake": "cmake",
+        "r": "r", "php": "php", "pl": "perl",
+    ]
 }

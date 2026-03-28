@@ -78,15 +78,19 @@ class ProjectState: Identifiable, ObservableObject {
     func closeFile(at index: Int) {
         guard openedFiles.indices.contains(index) else { return }
         openedFiles.remove(at: index)
-
-        if openedFiles.isEmpty {
-            activeFileIndex = nil
-        } else if let active = activeFileIndex {
-            if active >= openedFiles.count {
-                activeFileIndex = openedFiles.count - 1
-            } else if active > index {
-                activeFileIndex = active - 1
-            }
-        }
+        activeFileIndex = adjustIndex(afterRemoving: index, from: openedFiles.count, active: activeFileIndex)
     }
+}
+
+func adjustIndex(afterRemoving removed: Int, from count: Int, active: Int?) -> Int? {
+    if count == 0 {
+        return nil
+    }
+    guard let active = active else { return nil }
+    if active >= count {
+        return count - 1
+    } else if active > removed {
+        return active - 1
+    }
+    return active
 }
