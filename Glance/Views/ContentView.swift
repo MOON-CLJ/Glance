@@ -49,6 +49,10 @@ struct ContentView: View {
             GrepSearchView()
                 .modifier(ResizableSheet())
         }
+        .sheet(isPresented: $appState.showZellijSession) {
+            ZellijSessionView()
+                .modifier(ResizableSheet())
+        }
         .onAppear {
             if appState.projects.isEmpty {
                 let args = ProcessInfo.processInfo.arguments
@@ -105,6 +109,9 @@ struct WelcomeView: View {
                 .foregroundColor(.secondary)
 
             Text("Cmd+Shift+F to search content")
+                .foregroundColor(.secondary)
+
+            Text("Cmd+Shift+J for Zellij sessions")
                 .foregroundColor(.secondary)
 
             Button("Add Folder...") {

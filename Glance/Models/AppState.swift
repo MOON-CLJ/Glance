@@ -7,6 +7,7 @@ class AppState: ObservableObject {
     @Published var showFileSearch = false
     @Published var showGrepSearch = false
     @Published var showInFileSearch = false
+    @Published var showZellijSession = false
     /// 文件变化计数器，FileWatcher 触发时递增，用于通知预览刷新
     @Published var fileChangeCounter: Int = 0
     /// 打开文件后需要跳转的行号和高亮文本

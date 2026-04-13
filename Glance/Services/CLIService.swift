@@ -127,28 +127,49 @@ class CLIService {
         return result
     }
 
-    private func runCommand(_ path: String, arguments: [String]) async -> String {
+    func runCommand(_ path: String, arguments: [String], cwd: String? = nil) async -> String {
+        await runCommandFull(path, arguments: arguments, cwd: cwd).stdout
+    }
+
+    func runCommandFull(_ path: String, arguments: [String], cwd: String? = nil) async -> CommandResult {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: path)
                 process.arguments = arguments
 
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = Pipe()
+                if let cwd = cwd {
+                    process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+                }
+
+                let stdoutPipe = Pipe()
+                let stderrPipe = Pipe()
+                process.standardOutput = stdoutPipe
+                process.standardError = stderrPipe
 
                 do {
                     try process.run()
                     process.waitUntilExit()
 
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8) ?? ""
-                    continuation.resume(returning: output)
+                    let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                    let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                    let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+                    let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+                    continuation.resume(returning: CommandResult(
+                        stdout: stdout,
+                        stderr: stderr,
+                        exitCode: process.terminationStatus
+                    ))
                 } catch {
-                    continuation.resume(returning: "")
+                    continuation.resume(returning: CommandResult(stdout: "", stderr: error.localizedDescription, exitCode: -1))
                 }
             }
         }
     }
+}
+
+struct CommandResult {
+    let stdout: String
+    let stderr: String
+    let exitCode: Int32
 }
