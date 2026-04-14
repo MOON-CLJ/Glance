@@ -166,12 +166,25 @@ class CLIService {
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
 
+                var stdoutData = Data()
+                var stderrData = Data()
+
+                stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                    stdoutData.append(handle.availableData)
+                }
+                stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+                    stderrData.append(handle.availableData)
+                }
+
                 do {
                     try process.run()
                     process.waitUntilExit()
 
-                    let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                    let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                    stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                    stderrPipe.fileHandleForReading.readabilityHandler = nil
+                    stdoutData.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
+                    stderrData.append(stderrPipe.fileHandleForReading.readDataToEndOfFile())
+
                     let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
                     let stderr = String(data: stderrData, encoding: .utf8) ?? ""
                     continuation.resume(returning: CommandResult(
