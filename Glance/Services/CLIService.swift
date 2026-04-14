@@ -61,45 +61,64 @@ class CLIService {
     }
 
     /// 使用 rg 搜索文件内容
-    func searchContent(query: String, in directory: String) async -> [GrepSearchResult] {
+    func searchContent(query: String, in directory: String, options: SearchOptions = SearchOptions()) async -> [GrepSearchResult] {
         guard !query.isEmpty else { return [] }
 
-        let output = await runCommand(
-            rgPath,
-            arguments: [
-                "--line-number",
-                "--no-heading",
-                "--color", "never",
-                "--smart-case",
-                "--glob", "!.git",
-                "--glob", "!node_modules",
-                "--glob", "!__pycache__",
-                query,
-                directory
-            ]
-        )
+        var args: [String] = [
+            "--json",
+            "--glob", "!.git",
+            "--glob", "!node_modules",
+            "--glob", "!__pycache__",
+        ]
+
+        switch options.caseSensitivity {
+        case .smart:       args.append("--smart-case")
+        case .sensitive:   args.append("--case-sensitive")
+        case .insensitive: args.append("--ignore-case")
+        }
+
+        if options.wholeWord { args.append("--word-regexp") }
+        if !options.regex    { args.append("--fixed-strings") }
+
+        if !options.fileType.isEmpty {
+            args.append(contentsOf: ["--type", options.fileType])
+        }
+        if !options.fileGlob.isEmpty {
+            args.append(contentsOf: ["--glob", options.fileGlob])
+        }
+
+        args.append(contentsOf: [query, directory])
+
+        let output = await runCommand(rgPath, arguments: args)
 
         return output
             .split(separator: "\n")
             .compactMap { line -> GrepSearchResult? in
-                let str = String(line)
-                // 格式: file:line_number:content
-                let parts = str.split(separator: ":", maxSplits: 2)
-                guard parts.count >= 3,
-                      let lineNumber = Int(parts[1]) else { return nil }
-
-                let path = String(parts[0])
-                let content = String(parts[2])
-                let relativePath = path.hasPrefix(directory)
-                    ? String(path.dropFirst(directory.count + 1))
-                    : path
-
-                return GrepSearchResult(
-                    base: SearchResultBase(path: path, relativePath: relativePath),
-                    lineNumber: lineNumber,
-                    lineContent: content.trimmingCharacters(in: .whitespaces)
-                )
+                parseRgJsonMatch(line: String(line), directory: directory)
             }
+    }
+
+    private func parseRgJsonMatch(line: String, directory: String) -> GrepSearchResult? {
+        guard let data = line.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = json["type"] as? String, type == "match",
+              let matchData = json["data"] as? [String: Any],
+              let pathObj = matchData["path"] as? [String: Any],
+              let path = pathObj["text"] as? String,
+              let lineNumber = matchData["line_number"] as? Int,
+              let linesObj = matchData["lines"] as? [String: Any],
+              let lineText = linesObj["text"] as? String
+        else { return nil }
+
+        let relativePath = path.hasPrefix(directory + "/")
+            ? String(path.dropFirst(directory.count + 1))
+            : path
+
+        return GrepSearchResult(
+            base: SearchResultBase(path: path, relativePath: relativePath),
+            lineNumber: lineNumber,
+            lineContent: lineText.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
     }
 
     /// 获取 git 文件状态
