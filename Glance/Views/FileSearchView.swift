@@ -59,6 +59,9 @@ struct FileSearchView: View {
         }
 
         searchTask = Task {
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            if Task.isCancelled { return }
+
             let searchResults = await CLIService.shared.searchFiles(query: query, in: root)
             if !Task.isCancelled {
                 await MainActor.run {
